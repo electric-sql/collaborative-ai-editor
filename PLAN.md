@@ -2,7 +2,7 @@
 
 Build a TanStack Start demo where an LLM appears inside a collaborative ProseMirror editor as a real collaborator named something like **Electra**. The AI should join with its own presence, remote cursor, and selection, and its writing should **stream into the shared Yjs document progressively** rather than arriving as a single final patch. The visible editor should use `@handlewithcare/react-prosemirror`, which is an alternate `EditorView` implementation that uses React for rendering and exposes hooks like `useEditorEffect` for effects that need to run after the editor view is updated. The collaborative binding should use `y-prosemirror`, which maps a `Y.XmlFragment` to ProseMirror state and provides plugins for sync, cursors, and undo/redo. ([GitHub][1])
 
-Use TanStack Start for the app shell and HTTP endpoints. TanStack Start supports full-document SSR, streaming, server routes, and server functions, so it is a good fit for an editor app with a streaming LLM endpoint. Use TanStack AI on the server for the model call and streaming loop: its core `chat()` API returns an async iterable of stream chunks, and its SSE helpers can turn that into a proper streaming HTTP response. TanStack AI’s docs recommend SSE for most use cases and provide `toServerSentEventsResponse()` on the server and SSE connection helpers on the client. For the UI layer, use [Base UI](http://base-ui.com) components and style the interface with plain CSS. ([TanStack][2])
+Use TanStack Start for the app shell and HTTP endpoints. TanStack Start supports full-document SSR, streaming, server routes, and server functions, so it is a good fit for an editor app with a streaming LLM endpoint. Run the model chat loop on the server and apply stable chunks directly into the server-side Yjs document (`Y.Doc`) so document writes are authoritative and not dependent on a browser-local hidden editor. For the user-facing chat sidebar, use the Durable Streams TanStack AI transport (`@durable-streams/tanstack-ai-transport`) so chat sessions are resilient across refresh/reconnect and can be shared across tabs/devices. For the UI layer, use [Base UI](http://base-ui.com) components and style the interface with plain CSS. ([TanStack][2]) ([Durable Streams TanStack AI][12])
 
 ## Product shape for the first demo
 
@@ -15,6 +15,7 @@ The user should see:
 * the AI cursor move to the target range
 * text appear progressively in the document
 * an ephemeral “composing tail” near the cursor while the next chunk is still unstable
+* a chat sidebar to send prompts/messages to the LLM
 * cancel / stop generation
 * another browser tab can edit concurrently and the AI should keep writing in the right semantic place
 
@@ -24,7 +25,20 @@ This “real collaborator” feel is supported by Yjs’s collaboration model: a
 
 Run a **local Durable Streams dev server** for this demo environment. Use the Node dev server from `@durable-streams/server` during development/testing, bind it locally, and use file-backed `dataDir` persistence so document state survives app restarts while iterating. This server is a required dependency for collaboration in the demo, not an optional extra. ([Durable Streams Deployment][11])
 
-Use **two local peers** in the browser for the demo:
+Each document must have **two Durable Streams channels**:
+
+1. **Document collaboration stream set**
+
+   * one durable stream for Yjs document updates
+   * one paired awareness/presence stream for collaborator status/cursors
+   * both used by `@durable-streams/y-durable-streams` `YjsProvider`
+
+2. **Chat session stream**
+
+   * one durable stream for TanStack AI chat session events (messages, chunks, tool calls)
+   * used by the chat sidebar via the Durable Streams connection adapter
+
+Use **two peers**, but not both in-browser:
 
 1. **Human peer**
 
@@ -33,16 +47,13 @@ Use **two local peers** in the browser for the demo:
    * own `YjsProvider` connection to the same Durable Streams doc path
    * normal awareness state
 
-2. **Agent peer**
+2. **Agent peer (server-side)**
 
-   * separate `Y.Doc`
-   * separate `YjsProvider` connection to the same Durable Streams doc path
+   * server process with a dedicated `Y.Doc` + `YjsProvider` connection to the same Durable Streams doc path
    * separate awareness identity (`name`, `color`, `role: "agent"`, `status`)
-   * hidden ProseMirror instance using the same schema
+   * runs the model loop and applies stable writes directly to the server `Y.Doc`
 
-The reason to make the AI a separate peer instead of “special code” mutating the human editor is that Yjs awareness is per-client, and `yCursorPlugin` already knows how to render remote collaborators from provider awareness. `y-prosemirror` also gives each client its own undo/redo history. A separate peer matches the mental model and avoids faking authorship/presence. ([docs.yjs.dev][3])
-
-For the demo, I recommend a **hidden ProseMirror editor** for the agent peer instead of raw Yjs tree mutation. That keeps all AI edits schema-safe and lets the normal ProseMirror + `y-prosemirror` stack maintain the cursor/selection awareness shape the visible editor already expects. This is a design recommendation rather than something mandated by the libraries.
+The reason to keep the agent as a separate peer is still the same: awareness is per-client and `yCursorPlugin` already renders remote collaborators from provider awareness. A separate server peer preserves collaborator semantics while moving write authority to the backend. ([docs.yjs.dev][3])
 
 ## Non-negotiable design rule
 
@@ -59,30 +70,29 @@ Store them encoded if needed. Resolve them back to absolute positions each time 
 
 ## Streaming model
 
-Build the write loop around three layers:
+Build the system around three streaming layers:
 
-### 1. Server-side model stream
+### 1. Durable chat session stream (sidebar)
 
-Create a TanStack Start server route such as `/api/agent/stream`. Use TanStack AI `chat()` with the chosen adapter. Convert the returned async iterable to SSE with `toServerSentEventsResponse()`. SSE is the recommended streaming transport in TanStack AI, and TanStack Start supports streaming endpoints cleanly. ([TanStack][6])
+Use the Durable Streams TanStack AI transport for chat session resilience. The sidebar client should connect with a durable connection adapter (`sendUrl` + `readUrl`), and server routes should write model outputs into the durable chat session stream. ([Durable Streams TanStack AI][12])
 
-### 2. Client-side session controller
+### 2. Server-side document write loop
 
-On the client, create an `AgentSessionController` that:
+Run `chat()` on the server and pipe chunks into a server `AgentSessionController` that:
 
-* starts a generation request
 * receives streamed text chunks
-* updates the agent peer’s awareness state
-* buffers text
+* updates the agent peer awareness state via the server-side provider
+* buffers text into `committed` and `tail`
 * decides what part is stable enough to commit
-* applies ProseMirror transactions on the hidden agent editor
+* resolves relative anchors and applies writes directly to the server `Y.Doc`
 
-Use TanStack AI’s streaming-friendly client path, but do **not** build this as a chat transcript UI. The output target is the editor, so the important artifact is the stream of chunks, not assistant messages in a chat list. TanStack AI supports streaming, chunk callbacks, cancellation, and custom stream connections if needed. ([TanStack][7])
+This keeps Yjs writes authoritative on the server while clients simply observe synced CRDT updates.
 
-### 3. Stable prefix + composing tail
+### 3. Client editor sync + composing tail UI
 
 Maintain two buffers:
 
-* `committed`: already inserted into Yjs / ProseMirror
+* `committed`: already inserted into server `Y.Doc`
 * `tail`: currently visible as ephemeral composing output but not yet committed
 
 Commit only at safe boundaries such as:
@@ -96,7 +106,7 @@ That timing heuristic is an implementation recommendation. The goal is to avoid 
 
 ## Presence and cursor behavior
 
-Use Yjs awareness for the agent’s presence. Awareness is a separate CRDT for non-persistent collaboration state like who is online, cursor location, username, or email. It stores schemaless JSON per client, and providers typically expose it as `provider.awareness`. With Durable Streams, pass a shared `Awareness` instance into each `YjsProvider` and let its awareness stream handle presence updates. If a client state becomes `null` or stops updating, it is treated as offline. ([docs.yjs.dev][3]) ([Durable Streams][10])
+Use Yjs awareness for the agent’s presence. Awareness is a separate CRDT for non-persistent collaboration state like who is online, cursor location, username, or email. It stores schemaless JSON per client, and providers typically expose it as `provider.awareness`. With Durable Streams, each doc should include its paired presence stream and each peer should pass an `Awareness` instance to its `YjsProvider` so presence/cursor state syncs independently from document text. ([docs.yjs.dev][3]) ([Durable Streams][10])
 
 The human editor should use:
 
@@ -110,16 +120,16 @@ For the agent’s transient “thinking / composing / revising” UI, add a ligh
 
 ## Editor write algorithm
 
-Implement AI writing as transactions on the **hidden agent ProseMirror instance**.
+Implement AI writing as updates to the **server-side Y.Doc**.
 
 For **insert mode**:
 
 * capture current selection/cursor from the visible editor
 * convert the insertion point to a Y relative position
-* move agent awareness cursor there
+* move agent awareness cursor there from the server peer
 * stream output
 * repeatedly resolve relative position to current absolute location
-* dispatch `tr.insertText(stableChunk, pos)`
+* apply stable chunk writes into the server doc at resolved positions
 * advance the session anchor to the end of the inserted text
 
 For **rewrite mode**:
@@ -151,16 +161,20 @@ Use this file shape:
 
 * `src/lib/editor/schema.ts`
 * `src/lib/editor/createHumanEditor.ts`
-* `src/lib/editor/createAgentEditor.ts`
 * `src/lib/yjs/createRoomProvider.ts`
-* `src/lib/agent/AgentSession.ts`
-* `src/lib/agent/AgentSessionController.ts`
+* `src/lib/yjs/streamIds.ts`
+* `src/lib/agent/serverAgentSession.ts`
+* `src/lib/agent/serverAgentSessionController.ts`
 * `src/lib/agent/relativeAnchors.ts`
 * `src/lib/agent/stability.ts`
 * `src/lib/agent/prompts.ts`
-* `src/routes/api/agent/stream.ts`
+* `src/lib/chat/createDurableChatConnection.ts`
+* `src/routes/api/chat.ts`
+* `src/routes/api/chat-stream.ts`
+* `src/routes/api/agent/run.ts`
 * `src/dev/durableStreamsServer.ts`
 * `src/components/CollaborativeEditor.tsx`
+* `src/components/ChatSidebar.tsx`
 * `src/components/AgentOverlay.tsx`
 * `src/components/PresenceBar.tsx`
 
@@ -170,31 +184,41 @@ Use this file shape:
 
 Add and wire a local dev server process using `DurableStreamTestServer` from `@durable-streams/server` (default local host binding, explicit port, and file-backed `dataDir` for persistence). Add a dev workflow so the app and Durable Streams server can run together. Verify the editor provider `baseUrl` points at this local server. ([Durable Streams Deployment][11])
 
-### Milestone 1: baseline collaborative editor
+### Milestone 1: per-doc stream topology
+
+Define deterministic stream IDs for each document:
+
+* doc collaboration stream path
+* doc presence stream path
+* chat session stream path
+
+Wire clients/providers/routes against these IDs consistently.
+
+### Milestone 2: baseline collaborative editor
 
 Build a visible `react-prosemirror` editor wired to a `Y.Doc` via `y-prosemirror`, with remote cursors and local undo/redo. Use `Y.XmlFragment` as the shared rich-text type, and connect that doc through `YjsProvider` from `@durable-streams/y-durable-streams` (SSE live mode by default). ([GitHub][8]) ([Durable Streams][10])
 
-### Milestone 2: second peer for the agent
+### Milestone 3: chat sidebar over durable transport
 
-Create a hidden second peer in the same browser, with its own `Y.Doc`, provider, awareness identity, and hidden editor instance using the same schema. Confirm that the human editor sees the agent cursor as a normal remote collaborator.
+Build the sidebar chat UI and wire it to Durable Streams transport with `sendUrl`/`readUrl` routes (`/api/chat` + `/api/chat-stream`) so sessions resume across refreshes and reconnects. ([Durable Streams TanStack AI][12])
 
-### Milestone 3: streaming route
+### Milestone 4: server agent peer + write route
 
-Add `/api/agent/stream` in TanStack Start. Use TanStack AI `chat()` on the server and return SSE with `toServerSentEventsResponse()`. Cancellation must abort the active stream. TanStack AI exposes cancellation and chunk-level handling in its streaming guidance. ([TanStack][7])
+Create a server-side agent peer with its own awareness identity and provider connection. Add a route (for example `/api/agent/run`) that runs the LLM chat loop and edits the server `Y.Doc` directly using stable-prefix commits.
 
-### Milestone 4: insert mode
+### Milestone 5: insert mode
 
 Implement “continue writing” and “insert at cursor” using relative-position anchors and stable-prefix commits.
 
-### Milestone 5: rewrite mode
+### Milestone 6: rewrite mode
 
 Implement “rewrite selection” using start/end relative positions and progressive replacement. Keep this limited to textblock content in v1.
 
-### Milestone 6: overlay tail
+### Milestone 7: overlay tail
 
 Add a React overlay for the mutable tail, positioned with `useEditorEffect`, and an AI status pill driven by awareness state.
 
-### Milestone 7: concurrency test
+### Milestone 8: concurrency test
 
 Open two tabs. While the AI writes in one tab, edit nearby content in the other. The AI should continue writing at the intended semantic position, not at a stale integer offset. This is exactly why Yjs recommends relative positions over indexes for collaborative ProseMirror work. ([docs.yjs.dev][4])
 
@@ -210,6 +234,8 @@ The demo is done when all of these are true:
 * Cancel stops the model stream and clears transient UI cleanly.
 * Refreshing one tab preserves the collaborative document state through the normal Yjs provider path.
 * The local Durable Streams dev server starts reliably, and both human/agent peers connect through it.
+* Chat sidebar sessions resume after refresh/reconnect using the document’s durable chat stream.
+* Every doc has exactly: one Yjs collaboration stream, one Yjs presence stream, and one chat session stream.
 
 
 [1]: https://github.com/handlewithcarecollective/react-prosemirror "GitHub - handlewithcarecollective/react-prosemirror: A library for safely integrating ProseMirror and React. · GitHub"
@@ -223,3 +249,4 @@ The demo is done when all of these are true:
 [9]: https://docs.yjs.dev/api/y.doc?utm_source=chatgpt.com "Y.Doc"
 [10]: https://durablestreams.com/yjs "Yjs | Durable Streams"
 [11]: https://durablestreams.com/deployment "Deployment | Durable Streams"
+[12]: https://durablestreams.com/tanstack-ai "TanStack AI | Durable Streams"
