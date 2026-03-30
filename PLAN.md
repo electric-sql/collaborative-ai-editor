@@ -18,9 +18,11 @@ The user should see:
 * cancel / stop generation
 * another browser tab can edit concurrently and the AI should keep writing in the right semantic place
 
-This “real collaborator” feel is supported by Yjs’s collaboration model: awareness is separate from document content and is meant for user status and cursor/presence, while document content sync is handled by shared types and provider updates. `y-websocket` is the simplest provider to use for the demo because it distributes both document updates and awareness information among clients. ([docs.yjs.dev][3])
+This “real collaborator” feel is supported by Yjs’s collaboration model: awareness is separate from document content and is meant for user status and cursor/presence, while document content sync is handled by shared types and provider updates. Use `@durable-streams/y-durable-streams` as the provider for this demo so document updates stream over plain HTTP (SSE or long-poll) and avoid running a dedicated WebSocket service. The provider also supports optional awareness syncing for presence and cursors. ([Durable Streams][10])
 
 ## Core architecture
+
+Run a **local Durable Streams dev server** for this demo environment. Use the Node dev server from `@durable-streams/server` during development/testing, bind it locally, and use file-backed `dataDir` persistence so document state survives app restarts while iterating. This server is a required dependency for collaboration in the demo, not an optional extra. ([Durable Streams Deployment][11])
 
 Use **two local peers** in the browser for the demo:
 
@@ -28,13 +30,13 @@ Use **two local peers** in the browser for the demo:
 
    * visible `react-prosemirror` editor
    * own `Y.Doc`
-   * own provider connection
+   * own `YjsProvider` connection to the same Durable Streams doc path
    * normal awareness state
 
 2. **Agent peer**
 
    * separate `Y.Doc`
-   * separate provider connection to the same room
+   * separate `YjsProvider` connection to the same Durable Streams doc path
    * separate awareness identity (`name`, `color`, `role: "agent"`, `status`)
    * hidden ProseMirror instance using the same schema
 
@@ -94,7 +96,7 @@ That timing heuristic is an implementation recommendation. The goal is to avoid 
 
 ## Presence and cursor behavior
 
-Use Yjs awareness for the agent’s presence. Awareness is a separate CRDT for non-persistent collaboration state like who is online, cursor location, username, or email. It stores schemaless JSON per client, and providers typically expose it as `provider.awareness`. If a client state becomes `null` or stops updating, it is treated as offline. ([docs.yjs.dev][3])
+Use Yjs awareness for the agent’s presence. Awareness is a separate CRDT for non-persistent collaboration state like who is online, cursor location, username, or email. It stores schemaless JSON per client, and providers typically expose it as `provider.awareness`. With Durable Streams, pass a shared `Awareness` instance into each `YjsProvider` and let its awareness stream handle presence updates. If a client state becomes `null` or stops updating, it is treated as offline. ([docs.yjs.dev][3]) ([Durable Streams][10])
 
 The human editor should use:
 
@@ -157,15 +159,20 @@ Use this file shape:
 * `src/lib/agent/stability.ts`
 * `src/lib/agent/prompts.ts`
 * `src/routes/api/agent/stream.ts`
+* `src/dev/durableStreamsServer.ts`
 * `src/components/CollaborativeEditor.tsx`
 * `src/components/AgentOverlay.tsx`
 * `src/components/PresenceBar.tsx`
 
 ## Milestones for the coding agent
 
+### Milestone 0: local Durable Streams server
+
+Add and wire a local dev server process using `DurableStreamTestServer` from `@durable-streams/server` (default local host binding, explicit port, and file-backed `dataDir` for persistence). Add a dev workflow so the app and Durable Streams server can run together. Verify the editor provider `baseUrl` points at this local server. ([Durable Streams Deployment][11])
+
 ### Milestone 1: baseline collaborative editor
 
-Build a visible `react-prosemirror` editor wired to a `Y.Doc` via `y-prosemirror`, with remote cursors and local undo/redo. Use `Y.XmlFragment` as the shared rich-text type, as documented by `y-prosemirror`. ([GitHub][8])
+Build a visible `react-prosemirror` editor wired to a `Y.Doc` via `y-prosemirror`, with remote cursors and local undo/redo. Use `Y.XmlFragment` as the shared rich-text type, and connect that doc through `YjsProvider` from `@durable-streams/y-durable-streams` (SSE live mode by default). ([GitHub][8]) ([Durable Streams][10])
 
 ### Milestone 2: second peer for the agent
 
@@ -202,6 +209,7 @@ The demo is done when all of these are true:
 * AI changes do not pollute normal user undo history unless explicitly intended.
 * Cancel stops the model stream and clears transient UI cleanly.
 * Refreshing one tab preserves the collaborative document state through the normal Yjs provider path.
+* The local Durable Streams dev server starts reliably, and both human/agent peers connect through it.
 
 
 [1]: https://github.com/handlewithcarecollective/react-prosemirror "GitHub - handlewithcarecollective/react-prosemirror: A library for safely integrating ProseMirror and React. · GitHub"
@@ -213,3 +221,5 @@ The demo is done when all of these are true:
 [7]: https://tanstack.com/ai/latest/docs/guides/streaming "Streaming | TanStack AI Docs"
 [8]: https://github.com/yjs/y-prosemirror "GitHub - yjs/y-prosemirror: ProseMirror editor binding for Yjs · GitHub"
 [9]: https://docs.yjs.dev/api/y.doc?utm_source=chatgpt.com "Y.Doc"
+[10]: https://durablestreams.com/yjs "Yjs | Durable Streams"
+[11]: https://durablestreams.com/deployment "Deployment | Durable Streams"
