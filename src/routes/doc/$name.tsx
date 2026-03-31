@@ -21,6 +21,7 @@ import {
   LuListOrdered,
   LuMessageSquare,
   LuRedo2,
+  LuShare2,
   LuUndo2,
   LuX,
 } from 'react-icons/lu'
@@ -75,8 +76,11 @@ function DocumentPage() {
   const { displayName, saveDisplayName, ready } = useStoredDisplayName()
   const [draftName, setDraftName] = useState(displayName)
   const [nameModalOpen, setNameModalOpen] = useState(false)
+  const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const [chatOpen, setChatOpen] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const shareInputRef = useRef<HTMLInputElement>(null)
   const headingMenuRef = useRef<HTMLDetailsElement>(null)
 
   const title = useMemo(() => docKey.replace(/[-_]+/g, ' '), [docKey])
@@ -107,10 +111,42 @@ function DocumentPage() {
     }
   }, [nameModalOpen])
 
+  useEffect(() => {
+    if (shareModalOpen) {
+      setCopyState('idle')
+      setTimeout(() => shareInputRef.current?.select(), 30)
+    }
+  }, [shareModalOpen])
+
   const handleSaveName = () => {
     const next = saveDisplayName(draftName)
     setDraftName(next)
     setNameModalOpen(false)
+  }
+
+  const shareUrl =
+    typeof window !== 'undefined' ? window.location.href : `http://localhost:3000/doc/${encodeURIComponent(docKey)}`
+
+  const handleCopyShareUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopyState('copied')
+    } catch {
+      setCopyState('error')
+    }
+  }
+
+  const handleNativeShare = async () => {
+    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return
+    try {
+      await navigator.share({
+        title,
+        text: `Join me in ${title}`,
+        url: shareUrl,
+      })
+    } catch {
+      // user cancelled or share failed; keep modal open
+    }
   }
 
   const currentHeadingItem =
@@ -211,6 +247,19 @@ function DocumentPage() {
                       <Icon aria-hidden="true" />
                     </Toolbar.Button>
                   ))}
+                  {gi === TOOLBAR_GROUPS.length - 1 && (
+                    <>
+                      <span className="editor-float-toolbar__sep" aria-hidden="true" />
+                      <Toolbar.Button
+                        className="toolbar-button"
+                        aria-label="Share document"
+                        disabled={false}
+                        onClick={() => setShareModalOpen(true)}
+                      >
+                        <LuShare2 aria-hidden="true" />
+                      </Toolbar.Button>
+                    </>
+                  )}
                 </span>
               ))}
             </div>
@@ -294,7 +343,105 @@ function DocumentPage() {
         </div>
       )}
 
+      {shareModalOpen && (
+        <div
+          className="name-modal-overlay"
+          onClick={() => setShareModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Share document"
+        >
+          <div
+            className="name-modal share-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="name-modal__label">Share this document</p>
+            <Input
+              ref={shareInputRef}
+              className="name-modal__input"
+              type="text"
+              value={shareUrl}
+              readOnly
+              onFocus={(e) => e.currentTarget.select()}
+              aria-label="Share URL"
+            />
+            <div className="share-modal__hint">
+              {copyState === 'copied'
+                ? 'URL copied.'
+                : copyState === 'error'
+                  ? 'Could not copy URL.'
+                  : 'Anyone with the link can open this document.'}
+            </div>
+            <div className="name-modal__actions">
+              <Button
+                className="name-modal__btn name-modal__btn--cancel"
+                onClick={() => setShareModalOpen(false)}
+              >
+                Close
+              </Button>
+              <Button
+                className="name-modal__btn share-modal__btn"
+                onClick={() => {
+                  void handleCopyShareUrl()
+                }}
+              >
+                Copy URL
+              </Button>
+              <Button
+                className="name-modal__btn name-modal__btn--save"
+                onClick={() => {
+                  void handleNativeShare()
+                }}
+                disabled={typeof navigator === 'undefined' || typeof navigator.share !== 'function'}
+              >
+                Share
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <footer className="status-bar">
+        <a
+          className="status-bar__item status-bar__link"
+          href="https://durablestreams.com"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Durable Streams
+        </a>
+        <a
+          className="status-bar__item status-bar__link"
+          href="http://electric-sql.com/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          ElectricSQL
+        </a>
+        <a
+          className="status-bar__item status-bar__link"
+          href="http://tanstack.com/ai/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          TanStack AI
+        </a>
+        <a
+          className="status-bar__item status-bar__link"
+          href="http://yjs.dev"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Yjs
+        </a>
+        <a
+          className="status-bar__item status-bar__link"
+          href="http://prosemirror.net"
+          target="_blank"
+          rel="noreferrer"
+        >
+          ProseMirror
+        </a>
         <div className="status-bar__item">
           Editor {editorState.status} {editorState.synced ? '· synced' : '· syncing'}
         </div>

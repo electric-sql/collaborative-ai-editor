@@ -1,6 +1,7 @@
 import { EditorState } from 'prosemirror-state'
 import { keymap } from 'prosemirror-keymap'
-import { baseKeymap } from 'prosemirror-commands'
+import { baseKeymap, setBlockType, toggleMark } from 'prosemirror-commands'
+import { wrapInList } from 'prosemirror-schema-list'
 import * as Y from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import { reactKeys } from '@handlewithcare/react-prosemirror'
@@ -21,6 +22,8 @@ export function createHumanEditorState(args: {
   awareness: Awareness
 }): EditorState {
   const { doc, mapping } = initProseMirrorDoc(args.yFragment, schema)
+  const bulletList = schema.nodes.bullet_list
+  const orderedList = schema.nodes.ordered_list
   return EditorState.create({
     doc,
     schema,
@@ -58,6 +61,16 @@ export function createHumanEditorState(args: {
       }),
       yUndoPlugin(),
       keymap({
+        'Mod-b': toggleMark(schema.marks.strong),
+        'Mod-i': toggleMark(schema.marks.em),
+        'Mod-`': toggleMark(schema.marks.code),
+        'Mod-Alt-0': setBlockType(schema.nodes.paragraph),
+        'Mod-Alt-1': setBlockType(schema.nodes.heading, { level: 1 }),
+        'Mod-Alt-2': setBlockType(schema.nodes.heading, { level: 2 }),
+        'Mod-Alt-3': setBlockType(schema.nodes.heading, { level: 3 }),
+        'Mod-Alt-4': setBlockType(schema.nodes.heading, { level: 4 }),
+        ...(bulletList ? { 'Shift-Ctrl-8': wrapInList(bulletList) } : {}),
+        ...(orderedList ? { 'Shift-Ctrl-9': wrapInList(orderedList) } : {}),
         'Mod-z': undo,
         'Mod-y': redo,
         'Mod-Shift-z': redo,

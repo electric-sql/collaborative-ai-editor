@@ -332,13 +332,17 @@ export function ChatSidebar(props: {
                   }`}
                 >
                   <span className="chat-role">
-                    {item.message.role === 'user' && props.displayName ? props.displayName : item.message.role}
+                    {item.message.role === 'user' && props.displayName
+                      ? props.displayName
+                      : item.message.role === 'assistant'
+                        ? 'Electra'
+                        : item.message.role}
                   </span>
                   <MessagePartView message={item.message} />
                 </li>
               ) : (
                 <li key={item.key} className="chat-msg chat-msg-assistant chat-msg-assistant-meta chat-msg-insertion">
-                  <span className="chat-role">assistant</span>
+                  <span className="chat-role">Electra</span>
                   <details className="chat-disclosure chat-insert">
                     <summary className="chat-disclosure__summary">
                       <span className="chat-disclosure__icon">+</span>
