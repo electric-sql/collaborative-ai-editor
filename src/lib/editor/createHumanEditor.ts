@@ -29,11 +29,15 @@ export function createHumanEditorState(args: {
       ySyncPlugin(args.yFragment, { mapping }),
       yCursorPlugin(args.awareness, {
         cursorBuilder: (user) => {
-          const u = user as { role?: string; name?: string; color?: string }
+          const u = user as { role?: string; name?: string; color?: string; status?: string }
           if (u.role === 'agent') {
+            const status = u.status
+            const suffix = status === 'thinking' ? ' · thinking…'
+              : status === 'composing' ? ' · writing…'
+              : ''
             const el = defaultCursorBuilder({
               ...u,
-              name: u.name ?? 'Electra',
+              name: (u.name ?? 'Electra') + suffix,
             })
             el.classList.add('ProseMirror-yjs-cursor--agent')
             return el

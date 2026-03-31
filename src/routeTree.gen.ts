@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DocNameRouteImport } from './routes/doc/$name'
 import { Route as ApiChatStreamRouteImport } from './routes/api/chat-stream'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ApiAgentStopRouteImport } from './routes/api/agent/stop'
@@ -18,6 +19,11 @@ import { Route as ApiAgentRunRouteImport } from './routes/api/agent/run'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocNameRoute = DocNameRouteImport.update({
+  id: '/doc/$name',
+  path: '/doc/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChatStreamRoute = ApiChatStreamRouteImport.update({
@@ -45,6 +51,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/chat-stream': typeof ApiChatStreamRoute
+  '/doc/$name': typeof DocNameRoute
   '/api/agent/run': typeof ApiAgentRunRoute
   '/api/agent/stop': typeof ApiAgentStopRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/chat-stream': typeof ApiChatStreamRoute
+  '/doc/$name': typeof DocNameRoute
   '/api/agent/run': typeof ApiAgentRunRoute
   '/api/agent/stop': typeof ApiAgentStopRoute
 }
@@ -60,6 +68,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/chat-stream': typeof ApiChatStreamRoute
+  '/doc/$name': typeof DocNameRoute
   '/api/agent/run': typeof ApiAgentRunRoute
   '/api/agent/stop': typeof ApiAgentStopRoute
 }
@@ -69,6 +78,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/chat'
     | '/api/chat-stream'
+    | '/doc/$name'
     | '/api/agent/run'
     | '/api/agent/stop'
   fileRoutesByTo: FileRoutesByTo
@@ -76,6 +86,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/chat'
     | '/api/chat-stream'
+    | '/doc/$name'
     | '/api/agent/run'
     | '/api/agent/stop'
   id:
@@ -83,6 +94,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/chat'
     | '/api/chat-stream'
+    | '/doc/$name'
     | '/api/agent/run'
     | '/api/agent/stop'
   fileRoutesById: FileRoutesById
@@ -91,6 +103,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiChatStreamRoute: typeof ApiChatStreamRoute
+  DocNameRoute: typeof DocNameRoute
   ApiAgentRunRoute: typeof ApiAgentRunRoute
   ApiAgentStopRoute: typeof ApiAgentStopRoute
 }
@@ -102,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/doc/$name': {
+      id: '/doc/$name'
+      path: '/doc/$name'
+      fullPath: '/doc/$name'
+      preLoaderRoute: typeof DocNameRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/chat-stream': {
@@ -139,6 +159,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiChatRoute: ApiChatRoute,
   ApiChatStreamRoute: ApiChatStreamRoute,
+  DocNameRoute: DocNameRoute,
   ApiAgentRunRoute: ApiAgentRunRoute,
   ApiAgentStopRoute: ApiAgentStopRoute,
 }

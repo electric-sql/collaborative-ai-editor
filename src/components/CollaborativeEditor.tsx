@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ProseMirror, ProseMirrorDoc } from '@handlewithcare/react-prosemirror'
-import type { YjsProvider } from '@durable-streams/y-durable-streams'
-import { createHumanEditorState } from '../lib/editor/createHumanEditor'
-import { createRoomProvider } from '../lib/yjs/createRoomProvider'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  docCollaborationDocId,
-  durableStreamsYjsBaseUrl,
-  getDurableStreamsOrigin,
-} from '../lib/yjs/streamIds'
-import { PresenceBar } from './PresenceBar'
-import { AgentOverlay } from './AgentOverlay'
+  ProseMirror,
+  ProseMirrorDoc,
+  useEditorEffect,
+  useEditorState,
+} from '@handlewithcare/react-prosemirror'
+import { toggleMark, setBlockType } from 'prosemirror-commands'
+import { wrapInList, liftListItem, sinkListItem } from 'prosemirror-schema-list'
+import type { EditorView } from 'prosemirror-view'
+import type { Awareness } from 'y-protocols/awareness'
+import { undo, redo } from 'y-prosemirror'
+import { createHumanEditorState } from '../lib/editor/createHumanEditor'
+import { schema } from '../lib/editor/schema'
+import { createRoomProvider } from '../lib/yjs/createRoomProvider'
 
 function pickColor(seed: string): string {
   const colors = ['#2c7be5', '#e07020', '#2d9d6c', '#8a4be8', '#c94079']
@@ -20,45 +23,104 @@ function pickColor(seed: string): string {
   return colors[h]!
 }
 
-function ProviderStatus({
-  provider,
-  docKey,
-}: {
-  provider: YjsProvider
-  docKey: string
+export type EditorToolbarAction =
+  | 'bold'
+  | 'italic'
+  | 'heading'
+  | 'bulletList'
+  | 'orderedList'
+  | 'indent'
+  | 'outdent'
+  | 'undo'
+  | 'redo'
+
+export type EditorController = {
+  exec: (action: EditorToolbarAction) => void
+  focus: () => void
+}
+
+export type EditorConnectionState = {
+  status: 'disconnected' | 'connecting' | 'connected'
+  synced: boolean
+  collaboratorCount: number
+}
+
+export type EditorActiveState = Record<EditorToolbarAction, boolean>
+
+function dispatchListCommand(
+  view: EditorView,
+  kind: 'bullet' | 'ordered',
+) {
+  const listNode =
+    kind === 'bullet' ? schema.nodes.bullet_list : schema.nodes.ordered_list
+  const listItem = schema.nodes.list_item
+  if (!listNode || !listItem) return
+
+  const lifted = liftListItem(listItem)(view.state, view.dispatch)
+  if (lifted) return
+  wrapInList(listNode)(view.state, view.dispatch)
+}
+
+function EditorViewBridge(props: {
+  onViewChange: (view: EditorView | null) => void
 }) {
-  const [synced, setSynced] = useState(provider.synced)
-  const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>(
-    provider.connected ? 'connected' : 'connecting',
-  )
-  const target = useMemo(() => {
-    const baseUrl = durableStreamsYjsBaseUrl(getDurableStreamsOrigin())
-    const docId = docCollaborationDocId(docKey)
-    return `${baseUrl}/docs/${docId}`
-  }, [docKey])
+  useEditorEffect((view) => {
+    props.onViewChange(view)
+    return () => props.onViewChange(null)
+  }, [props])
+  return null
+}
+
+function isMarkActive(state: import('prosemirror-state').EditorState, markType: import('prosemirror-model').MarkType): boolean {
+  const { from, $from, to, empty } = state.selection
+  if (empty) return !!markType.isInSet(state.storedMarks || $from.marks())
+  return state.doc.rangeHasMark(from, to, markType)
+}
+
+function isNodeActive(state: import('prosemirror-state').EditorState, nodeType: import('prosemirror-model').NodeType): boolean {
+  const { $from } = state.selection
+  for (let d = $from.depth; d >= 0; d--) {
+    if ($from.node(d).type === nodeType) return true
+  }
+  return false
+}
+
+function ActiveStateWatcher({ onChange }: { onChange: (state: EditorActiveState) => void }) {
+  const editorState = useEditorState()
+  const prevRef = useRef('')
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
 
   useEffect(() => {
-    const onSynced = (s: boolean) => setSynced(s)
-    const onStatus = (s: 'disconnected' | 'connecting' | 'connected') =>
-      setStatus(s)
-    provider.on('synced', onSynced)
-    provider.on('status', onStatus)
-    return () => {
-      provider.off('synced', onSynced)
-      provider.off('status', onStatus)
+    if (!editorState) return
+    const s = editorState
+    const next: EditorActiveState = {
+      bold: isMarkActive(s, s.schema.marks.strong),
+      italic: isMarkActive(s, s.schema.marks.em),
+      heading: s.selection.$from.parent.type === s.schema.nodes.heading,
+      bulletList: isNodeActive(s, s.schema.nodes.bullet_list),
+      orderedList: isNodeActive(s, s.schema.nodes.ordered_list),
+      indent: false,
+      outdent: false,
+      undo: false,
+      redo: false,
     }
-  }, [provider])
-
-  return (
-    <div className="status-line" title={target}>
-      Durable Streams Yjs: {status} — synced: {synced ? 'yes' : 'no'}
-    </div>
-  )
+    const key = JSON.stringify(next)
+    if (key !== prevRef.current) {
+      prevRef.current = key
+      onChangeRef.current(next)
+    }
+  }, [editorState])
+  return null
 }
 
 export function CollaborativeEditor(props: {
   docKey: string
   localUserName: string
+  onControllerChange?: (controller: EditorController | null) => void
+  onConnectionStateChange?: (state: EditorConnectionState) => void
+  onAwarenessChange?: (awareness: Awareness | null, localClientId: number) => void
+  onActiveStateChange?: (state: EditorActiveState) => void
 }) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -73,11 +135,20 @@ export function CollaborativeEditor(props: {
 function CollaborativeEditorInner({
   docKey,
   localUserName,
+  onControllerChange,
+  onConnectionStateChange,
+  onAwarenessChange,
+  onActiveStateChange,
 }: {
   docKey: string
   localUserName: string
+  onControllerChange?: (controller: EditorController | null) => void
+  onConnectionStateChange?: (state: EditorConnectionState) => void
+  onAwarenessChange?: (awareness: Awareness | null, localClientId: number) => void
+  onActiveStateChange?: (state: EditorActiveState) => void
 }) {
   const [room, setRoom] = useState<ReturnType<typeof createRoomProvider> | null>(null)
+  const viewRef = useRef<EditorView | null>(null)
 
   useEffect(() => {
     const nextRoom = createRoomProvider({
@@ -94,6 +165,46 @@ function CollaborativeEditorInner({
     }
   }, [docKey, localUserName])
 
+  useEffect(() => {
+    if (room) {
+      onAwarenessChange?.(room.awareness, room.awareness.clientID)
+    } else {
+      onAwarenessChange?.(null, 0)
+    }
+  }, [room, onAwarenessChange])
+
+  useEffect(() => {
+    if (!room || !onConnectionStateChange) return
+
+    const emit = () => {
+      const states = room.awareness.getStates()
+      onConnectionStateChange({
+        status: room.provider.connected
+          ? 'connected'
+          : room.provider.connecting
+            ? 'connecting'
+            : 'disconnected',
+        synced: room.provider.synced,
+        collaboratorCount: states.size,
+      })
+    }
+
+    const handleStatus = () => emit()
+    const handleSynced = () => emit()
+    const handleAwareness = () => emit()
+
+    room.provider.on('status', handleStatus)
+    room.provider.on('synced', handleSynced)
+    room.awareness.on('change', handleAwareness)
+    emit()
+
+    return () => {
+      room.provider.off('status', handleStatus)
+      room.provider.off('synced', handleSynced)
+      room.awareness.off('change', handleAwareness)
+    }
+  }, [onConnectionStateChange, room])
+
   const defaultState = useMemo(
     () =>
       room
@@ -105,20 +216,85 @@ function CollaborativeEditorInner({
     [room],
   )
 
+  const controller = useMemo<EditorController>(
+    () => ({
+      exec(action) {
+        const view = viewRef.current
+        if (!view) return
+
+        const { state } = view
+        const dispatch = view.dispatch.bind(view)
+
+        switch (action) {
+          case 'bold':
+            toggleMark(state.schema.marks.strong)(state, dispatch, view)
+            break
+          case 'italic':
+            toggleMark(state.schema.marks.em)(state, dispatch, view)
+            break
+          case 'heading': {
+            const isHeading = state.selection.$from.parent.type === state.schema.nodes.heading
+            const command = isHeading
+              ? setBlockType(state.schema.nodes.paragraph)
+              : setBlockType(state.schema.nodes.heading, { level: 2 })
+            command(state, dispatch, view)
+            break
+          }
+          case 'bulletList':
+            dispatchListCommand(view, 'bullet')
+            break
+          case 'orderedList':
+            dispatchListCommand(view, 'ordered')
+            break
+          case 'indent':
+            if (schema.nodes.list_item) {
+              sinkListItem(schema.nodes.list_item)(state, dispatch)
+            }
+            break
+          case 'outdent':
+            if (schema.nodes.list_item) {
+              liftListItem(schema.nodes.list_item)(state, dispatch)
+            }
+            break
+          case 'undo':
+            undo(state)
+            break
+          case 'redo':
+            redo(state)
+            break
+        }
+
+        view.focus()
+      },
+      focus() {
+        viewRef.current?.focus()
+      },
+    }),
+    [],
+  )
+
+  useEffect(() => {
+    onControllerChange?.(controller)
+    return () => onControllerChange?.(null)
+  }, [controller, onControllerChange])
+
   if (!room) {
     return <p className="status-line">Connecting collaborative room…</p>
   }
 
   return (
     <div className="editor-wrap">
-      <PresenceBar awareness={room.awareness} />
       <ProseMirror key={docKey} defaultState={defaultState!}>
+        <EditorViewBridge
+          onViewChange={(view) => {
+            viewRef.current = view
+          }}
+        />
+        {onActiveStateChange && <ActiveStateWatcher onChange={onActiveStateChange} />}
         <div className="editor-surface-wrap">
           <ProseMirrorDoc className="editor-surface" />
-          <AgentOverlay awareness={room.awareness} ydoc={room.ydoc} />
         </div>
       </ProseMirror>
-      <ProviderStatus provider={room.provider} docKey={docKey} />
     </div>
   )
 }
