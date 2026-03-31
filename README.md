@@ -28,6 +28,55 @@ In practice that means:
 - chat messages and model/tool stream events are synchronized through the Durable Streams TanStack AI transport
 - multiple tabs/devices can reconnect and resume both document state and chat state
 
+## Tech stack
+
+### App framework
+
+- [`TanStack Start`](https://tanstack.com/start) powers the full-stack app shell, server routes, and development workflow.
+- [`TanStack Router`](https://tanstack.com/router) handles file-based routing for the homepage, document page, and API endpoints.
+- [`React`](https://react.dev) renders the editor UI, chat UI, and collaboration chrome.
+- [`Vite`](https://vite.dev) provides the local dev server and build pipeline.
+- [`TypeScript`](https://www.typescriptlang.org) provides the application’s static typing and editor tooling.
+
+### Collaborative editor
+
+- [`ProseMirror`](https://prosemirror.net) is the structured rich-text editor model used for the shared document.
+- [`@handlewithcare/react-prosemirror`](https://github.com/handlewithcarecollective/react-prosemirror) provides a React-friendly ProseMirror integration layer.
+- [`Yjs`](https://yjs.dev) is the CRDT used for collaborative document state.
+- [`y-prosemirror`](https://github.com/yjs/y-prosemirror) binds the ProseMirror document to the shared Yjs state.
+- [`y-protocols`](https://github.com/yjs/y-protocols) provides awareness/presence support for cursors and participant state.
+
+### Durable Streams integrations
+
+- [`@durable-streams/y-durable-streams`](https://durablestreams.com/yjs) syncs the Yjs document over Durable Streams using plain HTTP.
+- [`@durable-streams/tanstack-ai-transport`](https://durablestreams.com/tanstack-ai) provides durable chat session transport for TanStack AI.
+- [`@durable-streams/server`](https://durablestreams.com) runs the local Durable Streams server used by the demo.
+
+### AI stack
+
+- [`@tanstack/ai`](http://tanstack.com/ai/) runs the model/tool loop and stream processing.
+- [`@tanstack/ai-react`](http://tanstack.com/ai/) provides the `useChat` hook used by the sidebar chat UI.
+- [`@tanstack/ai-openai`](http://tanstack.com/ai/) connects the app’s agent loop to OpenAI models.
+- [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) is the underlying model API used for generation.
+
+### Agent editing/runtime
+
+- A tool-driven document editing runtime coordinates selection, insertion, deletion, rewrite, and formatting operations on the shared document.
+- Streamed insertion and rewrite flows let the agent progressively update the document rather than applying one final patch at the end.
+- [`streaming-markdown`](https://github.com/thetarnav/streaming-markdown) is used to interpret streamed markdown into structured editor content.
+- [`zod`](https://zod.dev) validates tool inputs and keeps the tool contract typed and explicit.
+
+### UI
+
+- [`@base-ui/react`](https://base-ui.com) provides unstyled accessible primitives for the UI.
+- [`react-icons`](https://react-icons.github.io/react-icons/) supplies the toolbar and chrome icons.
+- Plain CSS styles the editor, homepage, chat UI, tool disclosures, and modals without an extra styling framework.
+
+### Testing and verification
+
+- [`Vitest`](https://vitest.dev) runs deterministic unit tests for the editor, tools, routing, and markdown behavior.
+- Live model-backed evals run against OpenAI to verify actual tool usage and document-editing behavior end to end.
+
 ## What this repo runs
 
 - `localhost:3000` - TanStack Start app (editor + chat UI)

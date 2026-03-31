@@ -100,6 +100,14 @@ function Home() {
             <a className="landing-link" href="http://prosemirror.net" target="_blank" rel="noreferrer">
               ProseMirror
             </a>
+            <a
+              className="landing-link"
+              href="https://github.com/electric-sql/collaborative-ai-editor"
+              target="_blank"
+              rel="noreferrer"
+            >
+              GitHub demo
+            </a>
           </div>
         </div>
       </div>
