@@ -102,6 +102,34 @@ export interface StreamingEditRouter {
   isStreamingEditActive(): boolean
   pushStreamingText(delta: string): Promise<void>
   stopStreamingEdit(cancelled?: boolean): { ok: true; committedChars: number; cancelled?: boolean }
+  getActiveStreamingEditInfo?: () => { mode: string; contentFormat?: string } | null
+}
+
+const DOCUMENT_MUTATION_TOOLS = new Set([
+  'insert_text',
+  'delete_selection',
+  'set_format',
+  'start_streaming_edit',
+  'stop_streaming_edit',
+])
+
+function buildStreamingInsertSummary(input: {
+  mode?: string
+  contentFormat?: string
+  cancelled?: boolean
+}): string {
+  if (input.cancelled) {
+    return 'Stopped the document insertion.'
+  }
+  if (input.mode === 'rewrite') {
+    return input.contentFormat === 'markdown'
+      ? 'Updated the selected text in the document with formatted content.'
+      : 'Updated the selected text in the document.'
+  }
+  if (input.contentFormat === 'markdown') {
+    return 'Inserted formatted content into the document.'
+  }
+  return 'Inserted content into the document.'
 }
 
 export async function* routeAgentStreamChunks(
@@ -109,33 +137,165 @@ export async function* routeAgentStreamChunks(
   runtime: StreamingEditRouter,
 ): AsyncIterable<StreamChunk> {
   let suppressedMessageId: string | null = null
+  let suppressedInfo: { mode?: string; contentFormat?: string } | null = null
+  let sawVisibleAssistantText = false
+  let sawDocumentMutationTool = false
 
   for await (const chunk of stream) {
     if (chunk.type === 'TEXT_MESSAGE_START' && chunk.role === 'assistant') {
       if (runtime.isStreamingEditActive()) {
         suppressedMessageId = chunk.messageId
+        const info = runtime.getActiveStreamingEditInfo?.() ?? null
+        suppressedInfo = info
+        yield {
+          type: 'CUSTOM',
+          timestamp: chunk.timestamp,
+          model: chunk.model,
+          name: 'streaming-insert-start',
+          value: {
+            messageId: chunk.messageId,
+            ...(info ? info : {}),
+          },
+        }
         continue
       }
+      sawVisibleAssistantText = true
       yield chunk
       continue
     }
 
     if (chunk.type === 'TEXT_MESSAGE_CONTENT' && chunk.messageId === suppressedMessageId) {
       await runtime.pushStreamingText(chunk.delta)
+      yield {
+        type: 'CUSTOM',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        name: 'streaming-insert-delta',
+        value: {
+          messageId: chunk.messageId,
+          delta: chunk.delta,
+        },
+      }
       continue
+    }
+
+    if (chunk.type === 'TOOL_CALL_START' && DOCUMENT_MUTATION_TOOLS.has(chunk.toolName)) {
+      sawDocumentMutationTool = true
     }
 
     if (
       (chunk.type === 'TOOL_CALL_START' || chunk.type === 'RUN_FINISHED' || chunk.type === 'RUN_ERROR') &&
       suppressedMessageId !== null
     ) {
-      runtime.stopStreamingEdit(chunk.type === 'RUN_ERROR')
+      const result = runtime.stopStreamingEdit(chunk.type === 'RUN_ERROR')
+      yield {
+        type: 'CUSTOM',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        name: 'streaming-insert-end',
+        value: {
+          messageId: suppressedMessageId,
+          ...result,
+        },
+      }
+      const summaryMessageId = `${suppressedMessageId}-summary`
+      const summary = buildStreamingInsertSummary({
+        ...suppressedInfo,
+        cancelled: result.cancelled,
+      })
+      yield {
+        type: 'TEXT_MESSAGE_START',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: summaryMessageId,
+        role: 'assistant',
+      }
+      yield {
+        type: 'TEXT_MESSAGE_CONTENT',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: summaryMessageId,
+        delta: summary,
+      }
+      yield {
+        type: 'TEXT_MESSAGE_END',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: summaryMessageId,
+      }
       suppressedMessageId = null
+      suppressedInfo = null
+    }
+
+    if (
+      chunk.type === 'RUN_FINISHED' &&
+      sawDocumentMutationTool &&
+      !sawVisibleAssistantText &&
+      suppressedMessageId === null
+    ) {
+      const summaryMessageId = `${chunk.runId}-summary`
+      yield {
+        type: 'TEXT_MESSAGE_START',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: summaryMessageId,
+        role: 'assistant',
+      }
+      yield {
+        type: 'TEXT_MESSAGE_CONTENT',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: summaryMessageId,
+        delta: 'Updated the document.',
+      }
+      yield {
+        type: 'TEXT_MESSAGE_END',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: summaryMessageId,
+      }
+      sawVisibleAssistantText = true
     }
 
     if (chunk.type === 'TEXT_MESSAGE_END' && chunk.messageId === suppressedMessageId) {
-      runtime.stopStreamingEdit(false)
+      const result = runtime.stopStreamingEdit(false)
+      yield {
+        type: 'CUSTOM',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        name: 'streaming-insert-end',
+        value: {
+          messageId: suppressedMessageId,
+          ...result,
+        },
+      }
+      const summaryMessageId = `${suppressedMessageId}-summary`
+      const summary = buildStreamingInsertSummary({
+        ...suppressedInfo,
+        cancelled: result.cancelled,
+      })
+      yield {
+        type: 'TEXT_MESSAGE_START',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: summaryMessageId,
+        role: 'assistant',
+      }
+      yield {
+        type: 'TEXT_MESSAGE_CONTENT',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: summaryMessageId,
+        delta: summary,
+      }
+      yield {
+        type: 'TEXT_MESSAGE_END',
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: summaryMessageId,
+      }
       suppressedMessageId = null
+      suppressedInfo = null
       continue
     }
 

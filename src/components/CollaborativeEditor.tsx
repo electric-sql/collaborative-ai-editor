@@ -26,7 +26,12 @@ function pickColor(seed: string): string {
 export type EditorToolbarAction =
   | 'bold'
   | 'italic'
-  | 'heading'
+  | 'code'
+  | 'paragraph'
+  | 'heading1'
+  | 'heading2'
+  | 'heading3'
+  | 'heading4'
   | 'bulletList'
   | 'orderedList'
   | 'indent'
@@ -97,7 +102,20 @@ function ActiveStateWatcher({ onChange }: { onChange: (state: EditorActiveState)
     const next: EditorActiveState = {
       bold: isMarkActive(s, s.schema.marks.strong),
       italic: isMarkActive(s, s.schema.marks.em),
-      heading: s.selection.$from.parent.type === s.schema.nodes.heading,
+      code: isMarkActive(s, s.schema.marks.code),
+      paragraph: s.selection.$from.parent.type === s.schema.nodes.paragraph,
+      heading1:
+        s.selection.$from.parent.type === s.schema.nodes.heading &&
+        s.selection.$from.parent.attrs.level === 1,
+      heading2:
+        s.selection.$from.parent.type === s.schema.nodes.heading &&
+        s.selection.$from.parent.attrs.level === 2,
+      heading3:
+        s.selection.$from.parent.type === s.schema.nodes.heading &&
+        s.selection.$from.parent.attrs.level === 3,
+      heading4:
+        s.selection.$from.parent.type === s.schema.nodes.heading &&
+        s.selection.$from.parent.attrs.level === 4,
       bulletList: isNodeActive(s, s.schema.nodes.bullet_list),
       orderedList: isNodeActive(s, s.schema.nodes.ordered_list),
       indent: false,
@@ -232,12 +250,19 @@ function CollaborativeEditorInner({
           case 'italic':
             toggleMark(state.schema.marks.em)(state, dispatch, view)
             break
-          case 'heading': {
-            const isHeading = state.selection.$from.parent.type === state.schema.nodes.heading
-            const command = isHeading
-              ? setBlockType(state.schema.nodes.paragraph)
-              : setBlockType(state.schema.nodes.heading, { level: 2 })
-            command(state, dispatch, view)
+          case 'code':
+            toggleMark(state.schema.marks.code)(state, dispatch, view)
+            break
+          case 'paragraph':
+            setBlockType(state.schema.nodes.paragraph)(state, dispatch, view)
+            break
+          case 'heading1':
+          case 'heading2':
+          case 'heading3':
+          case 'heading4': {
+            const level =
+              action === 'heading1' ? 1 : action === 'heading2' ? 2 : action === 'heading3' ? 3 : 4
+            setBlockType(state.schema.nodes.heading, { level })(state, dispatch, view)
             break
           }
           case 'bulletList':

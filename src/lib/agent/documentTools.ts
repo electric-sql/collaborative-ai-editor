@@ -51,6 +51,12 @@ const selectTextDef = toolDefinition({
   }),
 })
 
+const selectCurrentBlockDef = toolDefinition({
+  name: 'select_current_block',
+  description:
+    'Select the full current text block around the cursor. Use this for formatting or rewriting the current line/paragraph when you already know the cursor is in the right block.',
+})
+
 const selectBetweenMatchesDef = toolDefinition({
   name: 'select_between_matches',
   description:
@@ -97,9 +103,10 @@ const deleteSelectionDef = toolDefinition({
 const startStreamingEditDef = toolDefinition({
   name: 'start_streaming_edit',
   description:
-    'Arm the next assistant text message for document insertion at the current cursor or selection. Use this when the user wants actual document prose written, such as a story, paragraph, continuation, or rewrite. While active, output only document prose, not explanations. Use rewrite mode only when a selection is already set.',
+    'Arm the next assistant text message for document insertion at the current cursor or selection. Use this when the user wants actual document prose written, such as a story, paragraph, continuation, or rewrite. While active, output only document prose, not explanations. Set contentFormat to markdown when you want streamed markdown to become structured document formatting. Use rewrite mode only when a selection is already set.',
   inputSchema: z.object({
     mode: z.enum(['continue', 'insert', 'rewrite']),
+    contentFormat: z.enum(['plain_text', 'markdown']).optional(),
   }),
 })
 
@@ -131,6 +138,11 @@ export function createDocumentTools(runtime: DocumentToolRuntime) {
     selectTextDef.server(async ({ matchId }, context) => {
       const result = runtime.selectText(matchId)
       context?.emitCustomEvent('agent-selection-updated', { matchId })
+      return result
+    }),
+    selectCurrentBlockDef.server(async (_args, context) => {
+      const result = runtime.selectCurrentBlock()
+      context?.emitCustomEvent('agent-selection-updated', { currentBlock: true })
       return result
     }),
     selectBetweenMatchesDef.server(async (args, context) => {
@@ -176,9 +188,16 @@ export function createDocumentTools(runtime: DocumentToolRuntime) {
       context?.emitCustomEvent('agent-edit-applied', { kind: 'delete_selection' })
       return result
     }),
-    startStreamingEditDef.server(async ({ mode }, context) => {
-      const result = runtime.startStreamingEdit(mode as AgentRunMode)
-      context?.emitCustomEvent('agent-streaming-edit', { active: true, mode })
+    startStreamingEditDef.server(async ({ mode, contentFormat }, context) => {
+      const result = runtime.startStreamingEdit(
+        mode as AgentRunMode,
+        (contentFormat as 'plain_text' | 'markdown' | undefined) ?? 'plain_text',
+      )
+      context?.emitCustomEvent('agent-streaming-edit', {
+        active: true,
+        mode,
+        contentFormat: result.contentFormat,
+      })
       return result
     }),
     stopStreamingEditDef.server(async (_args, context) => {

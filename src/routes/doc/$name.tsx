@@ -8,8 +8,12 @@ import type { Awareness } from 'y-protocols/awareness'
 import {
   LuBold,
   LuChevronRight,
+  LuChevronDown,
+  LuCode,
   LuFileText,
+  LuHeading1,
   LuHeading2,
+  LuHeading3,
   LuIndentDecrease,
   LuIndentIncrease,
   LuItalic,
@@ -41,8 +45,8 @@ const TOOLBAR_GROUPS: Array<
   [
     { action: 'bold', label: 'Bold', icon: LuBold },
     { action: 'italic', label: 'Italic', icon: LuItalic },
+    { action: 'code', label: 'Inline code', icon: LuCode },
   ],
-  [{ action: 'heading', label: 'Heading', icon: LuHeading2 }],
   [
     { action: 'bulletList', label: 'Bullet list', icon: LuList },
     { action: 'orderedList', label: 'Ordered list', icon: LuListOrdered },
@@ -55,6 +59,14 @@ const TOOLBAR_GROUPS: Array<
   ],
 ]
 
+const HEADING_MENU_ITEMS: Array<{ action: EditorToolbarAction; label: string; icon: typeof LuBold }> = [
+  { action: 'paragraph', label: 'Paragraph', icon: LuFileText },
+  { action: 'heading1', label: 'Heading 1', icon: LuHeading1 },
+  { action: 'heading2', label: 'Heading 2', icon: LuHeading2 },
+  { action: 'heading3', label: 'Heading 3', icon: LuHeading3 },
+  { action: 'heading4', label: 'Heading 4', icon: LuHeading3 },
+]
+
 function DocumentPage() {
   const { name } = Route.useParams()
   const navigate = Route.useNavigate()
@@ -65,6 +77,7 @@ function DocumentPage() {
   const [nameModalOpen, setNameModalOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const headingMenuRef = useRef<HTMLDetailsElement>(null)
 
   const title = useMemo(() => docKey.replace(/[-_]+/g, ' '), [docKey])
 
@@ -98,6 +111,18 @@ function DocumentPage() {
     const next = saveDisplayName(draftName)
     setDraftName(next)
     setNameModalOpen(false)
+  }
+
+  const currentHeadingItem =
+    HEADING_MENU_ITEMS.find(({ action }) => activeState?.[action]) ??
+    HEADING_MENU_ITEMS.find(({ action }) => action === 'paragraph')!
+  const HeadingTriggerIcon = currentHeadingItem.icon
+
+  const runHeadingAction = (action: EditorToolbarAction) => {
+    editorController?.exec(action)
+    if (headingMenuRef.current) {
+      headingMenuRef.current.open = false
+    }
   }
 
   return (
@@ -145,6 +170,35 @@ function DocumentPage() {
               {TOOLBAR_GROUPS.map((group, gi) => (
                 <span key={gi} className="editor-float-toolbar__segment">
                   {gi > 0 && <span className="editor-float-toolbar__sep" aria-hidden="true" />}
+                  {gi === 1 && (
+                    <>
+                      <details ref={headingMenuRef} className="toolbar-dropdown">
+                        <summary
+                          className="toolbar-button toolbar-dropdown__summary"
+                          aria-label="Headings and paragraph"
+                        >
+                          <HeadingTriggerIcon aria-hidden="true" />
+                          <LuChevronDown aria-hidden="true" className="toolbar-dropdown__chevron" />
+                        </summary>
+                        <div className="toolbar-dropdown__menu" role="menu" aria-label="Headings">
+                          {HEADING_MENU_ITEMS.map(({ action, label, icon: Icon }) => (
+                            <button
+                              key={action}
+                              type="button"
+                              className={`toolbar-dropdown__item${activeState?.[action] ? ' toolbar-dropdown__item--active' : ''}`}
+                              role="menuitemradio"
+                              aria-checked={activeState?.[action] ?? false}
+                              onClick={() => runHeadingAction(action)}
+                            >
+                              <Icon aria-hidden="true" />
+                              <span>{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </details>
+                      <span className="editor-float-toolbar__sep" aria-hidden="true" />
+                    </>
+                  )}
                   {group.map(({ action, label, icon: Icon }) => (
                     <Toolbar.Button
                       key={action}

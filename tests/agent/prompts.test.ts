@@ -23,6 +23,7 @@ describe('prompt unit tests', () => {
     expect(defaultPrompt).toContain('must perform that work in the document with tools')
     expect(defaultPrompt).toContain('write me a short story')
     expect(defaultPrompt).toContain('Only call start_streaming_edit')
+    expect(defaultPrompt).toContain('system will generate the user-facing summary automatically')
     expect(insertPrompt).toContain('prefer insert mode')
     expect(rewritePrompt).toContain('prefer rewrite mode')
   })

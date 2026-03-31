@@ -39,6 +39,9 @@ function createRouterStub(initiallyActive = false): StreamingEditRouter & {
       active = false
       return { ok: true, committedChars: pushed.join('').length, ...(cancelled ? { cancelled: true } : {}) }
     },
+    getActiveStreamingEditInfo() {
+      return active ? { mode: 'insert', contentFormat: 'plain_text' } : null
+    },
   }
 }
 
@@ -113,7 +116,50 @@ describe('chat stream routing unit tests', () => {
 
     expect(runtime.pushed).toEqual(['Once ', 'upon a time'])
     expect(runtime.stops).toEqual([false])
-    expect(yielded).toEqual(chunks.slice(4))
+    expect(yielded).toEqual([
+      {
+        type: 'CUSTOM',
+        timestamp: 1,
+        name: 'streaming-insert-start',
+        value: { messageId: 'm1', mode: 'insert', contentFormat: 'plain_text' },
+      },
+      {
+        type: 'CUSTOM',
+        timestamp: 2,
+        name: 'streaming-insert-delta',
+        value: { messageId: 'm1', delta: 'Once ' },
+      },
+      {
+        type: 'CUSTOM',
+        timestamp: 3,
+        name: 'streaming-insert-delta',
+        value: { messageId: 'm1', delta: 'upon a time' },
+      },
+      {
+        type: 'CUSTOM',
+        timestamp: 4,
+        name: 'streaming-insert-end',
+        value: { messageId: 'm1', ok: true, committedChars: 'Once upon a time'.length },
+      },
+      {
+        type: 'TEXT_MESSAGE_START',
+        timestamp: 4,
+        messageId: 'm1-summary',
+        role: 'assistant',
+      },
+      {
+        type: 'TEXT_MESSAGE_CONTENT',
+        timestamp: 4,
+        messageId: 'm1-summary',
+        delta: 'Inserted content into the document.',
+      },
+      {
+        type: 'TEXT_MESSAGE_END',
+        timestamp: 4,
+        messageId: 'm1-summary',
+      },
+      ...chunks.slice(4),
+    ])
   })
 
   it('stops a suppressed streaming edit on tool call boundaries and yields the tool call', async () => {
@@ -128,7 +174,44 @@ describe('chat stream routing unit tests', () => {
 
     expect(runtime.pushed).toEqual(['draft'])
     expect(runtime.stops).toEqual([false])
-    expect(yielded).toEqual([chunks[2]!])
+    expect(yielded).toEqual([
+      {
+        type: 'CUSTOM',
+        timestamp: 1,
+        name: 'streaming-insert-start',
+        value: { messageId: 'm1', mode: 'insert', contentFormat: 'plain_text' },
+      },
+      {
+        type: 'CUSTOM',
+        timestamp: 2,
+        name: 'streaming-insert-delta',
+        value: { messageId: 'm1', delta: 'draft' },
+      },
+      {
+        type: 'CUSTOM',
+        timestamp: 3,
+        name: 'streaming-insert-end',
+        value: { messageId: 'm1', ok: true, committedChars: 'draft'.length },
+      },
+      {
+        type: 'TEXT_MESSAGE_START',
+        timestamp: 3,
+        messageId: 'm1-summary',
+        role: 'assistant',
+      },
+      {
+        type: 'TEXT_MESSAGE_CONTENT',
+        timestamp: 3,
+        messageId: 'm1-summary',
+        delta: 'Inserted content into the document.',
+      },
+      {
+        type: 'TEXT_MESSAGE_END',
+        timestamp: 3,
+        messageId: 'm1-summary',
+      },
+      chunks[2]!,
+    ])
   })
 
   it('marks suppression as cancelled on run errors', async () => {
@@ -143,6 +226,77 @@ describe('chat stream routing unit tests', () => {
 
     expect(runtime.pushed).toEqual(['partial'])
     expect(runtime.stops).toEqual([true])
-    expect(yielded).toEqual([chunks[2]!])
+    expect(yielded).toEqual([
+      {
+        type: 'CUSTOM',
+        timestamp: 1,
+        name: 'streaming-insert-start',
+        value: { messageId: 'm1', mode: 'insert', contentFormat: 'plain_text' },
+      },
+      {
+        type: 'CUSTOM',
+        timestamp: 2,
+        name: 'streaming-insert-delta',
+        value: { messageId: 'm1', delta: 'partial' },
+      },
+      {
+        type: 'CUSTOM',
+        timestamp: 3,
+        name: 'streaming-insert-end',
+        value: { messageId: 'm1', ok: true, committedChars: 'partial'.length, cancelled: true },
+      },
+      {
+        type: 'TEXT_MESSAGE_START',
+        timestamp: 3,
+        messageId: 'm1-summary',
+        role: 'assistant',
+      },
+      {
+        type: 'TEXT_MESSAGE_CONTENT',
+        timestamp: 3,
+        messageId: 'm1-summary',
+        delta: 'Stopped the document insertion.',
+      },
+      {
+        type: 'TEXT_MESSAGE_END',
+        timestamp: 3,
+        messageId: 'm1-summary',
+      },
+      chunks[2]!,
+    ])
+  })
+
+  it('synthesizes a summary when tool-only document edits finish without assistant text', async () => {
+    const runtime = createRouterStub(false)
+    const chunks: StreamChunk[] = [
+      { type: 'RUN_STARTED', timestamp: 1, runId: 'r1' },
+      { type: 'TOOL_CALL_START', timestamp: 2, toolCallId: 't1', toolName: 'insert_text' },
+      { type: 'RUN_FINISHED', timestamp: 3, runId: 'r1', finishReason: 'stop' },
+    ]
+
+    const yielded = await collect(routeAgentStreamChunks((async function* () { yield* chunks })(), runtime))
+
+    expect(yielded).toEqual([
+      chunks[0]!,
+      chunks[1]!,
+      {
+        type: 'TEXT_MESSAGE_START',
+        timestamp: 3,
+        messageId: 'r1-summary',
+        role: 'assistant',
+      },
+      {
+        type: 'TEXT_MESSAGE_CONTENT',
+        timestamp: 3,
+        messageId: 'r1-summary',
+        delta: 'Updated the document.',
+      },
+      {
+        type: 'TEXT_MESSAGE_END',
+        timestamp: 3,
+        messageId: 'r1-summary',
+      },
+      chunks[2]!,
+    ])
   })
 })

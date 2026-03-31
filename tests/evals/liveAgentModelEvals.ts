@@ -9,6 +9,7 @@ import { createTestSession, readDocJson, readDocText } from '../agent/testUtils'
 type EvalResult = {
   name: string
   passed: boolean
+  initialDocText: string
   docText: string
   docJson: unknown
   chatText: string
@@ -56,6 +57,13 @@ function chainValidators(
   }
 }
 
+function validateRequiredChatSummary(result: EvalResult): string | null {
+  if (result.docText !== result.initialDocText && result.chatText.trim().length === 0) {
+    return 'Expected a short chat summary after the document edit, but chat text was empty.'
+  }
+  return null
+}
+
 async function runScenario(scenario: Scenario): Promise<EvalResult> {
   const session = createTestSession(`eval-${scenario.name.replace(/\s+/g, '-').toLowerCase()}`)
   const runtime = DocumentToolRuntime.createForSession({ session })
@@ -64,6 +72,7 @@ async function runScenario(scenario: Scenario): Promise<EvalResult> {
     if (scenario.seed) {
       runtime.insertText(scenario.seed)
     }
+    const initialDocText = readDocText(session)
 
     const stream = chat({
       adapter: openaiText((process.env.OPENAI_MODEL?.trim() || 'gpt-5.4') as any),
@@ -92,13 +101,22 @@ async function runScenario(scenario: Scenario): Promise<EvalResult> {
 
     const docText = readDocText(session)
     const docJson = readDocJson(session)
+    const resultForValidation = {
+      name: scenario.name,
+      passed: true,
+      initialDocText,
+      docText,
+      docJson,
+      chatText,
+      toolCalls,
+    }
     const details =
-      scenario.validate({ name: scenario.name, passed: true, docText, docJson, chatText, toolCalls }) ??
-      undefined
+      scenario.validate(resultForValidation) ?? validateRequiredChatSummary(resultForValidation) ?? undefined
 
     return {
       name: scenario.name,
       passed: !details,
+      initialDocText,
       docText,
       docJson,
       chatText,
@@ -257,6 +275,57 @@ const scenarios: Scenario[] = [
       }
       if (result.docText.includes('slow and repetitive')) {
         return 'Expected the first sentence to be rewritten away from the original wording.'
+      }
+      return null
+    }),
+  },
+  {
+    name: 'write markdown outline with heading and bullets',
+    preferredMode: 'continue',
+    prompt:
+      'Write a markdown outline for a release plan with one heading and exactly three bullet points. Use start_streaming_edit with contentFormat markdown and stream the markdown into the document.',
+    validate: chainValidators(validateNoSummaryLeakInDocument, (result) => {
+      if (!result.toolCalls.includes('start_streaming_edit')) {
+        return 'Expected start_streaming_edit for markdown outline generation.'
+      }
+      const json = result.docJson as any
+      if (json?.content?.[0]?.type !== 'heading') {
+        return 'Expected the markdown outline to begin with a heading node.'
+      }
+      const listNode = json?.content?.find?.((node: any) => node.type === 'bullet_list')
+      if (!listNode || listNode.content?.length !== 3) {
+        return 'Expected exactly three bullet list items.'
+      }
+      return null
+    }),
+  },
+  {
+    name: 'write markdown heading and paragraph at top',
+    preferredMode: 'continue',
+    prompt:
+      'Write markdown with a level-2 heading titled "Launch Notes" followed by a short paragraph. Use start_streaming_edit with contentFormat markdown and put the markdown result in the document.',
+    validate: chainValidators(validateNoSummaryLeakInDocument, (result) => {
+      const json = result.docJson as any
+      if (json?.content?.[0]?.type !== 'heading' || json?.content?.[0]?.attrs?.level !== 2) {
+        return 'Expected a level-2 heading at the top of the document.'
+      }
+      if (json?.content?.[1]?.type !== 'paragraph') {
+        return 'Expected a paragraph after the heading.'
+      }
+      return null
+    }),
+  },
+  {
+    name: 'rewrite with markdown emphasis',
+    preferredMode: 'rewrite',
+    seed: 'This line should be emphasized.',
+    prompt:
+      'Rewrite the sentence so the key word is bold using markdown. Use start_streaming_edit with contentFormat markdown and put the formatted result in the document.',
+    validate: chainValidators(validateNoSummaryLeakInDocument, (result) => {
+      const json = result.docJson as any
+      const marks = json?.content?.[0]?.content?.flatMap?.((node: any) => node.marks ?? []) ?? []
+      if (!marks.some((mark: any) => mark.type === 'strong')) {
+        return 'Expected the rewritten markdown result to contain a strong mark.'
       }
       return null
     }),

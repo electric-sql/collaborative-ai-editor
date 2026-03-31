@@ -18,6 +18,7 @@ describe('document tool unit tests', () => {
       'place_cursor',
       'place_cursor_at_document_boundary',
       'select_text',
+      'select_current_block',
       'select_between_matches',
       'clear_selection',
       'set_format',
@@ -110,6 +111,20 @@ describe('document tool unit tests', () => {
     runtime.destroy()
   })
 
+  it('runs the current block selection tool', async () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+    const tools = createToolMap(runtime)
+
+    await tools.get('insert_text')!.execute?.({ text: 'body text' })
+    await tools.get('place_cursor_at_document_boundary')!.execute?.({ boundary: 'end' })
+    const result = await tools.get('select_current_block')!.execute?.({})
+
+    expect(result).toEqual({ ok: true, selectedText: 'body text' })
+
+    runtime.destroy()
+  })
+
   it('runs insert_text and delete_selection tools', async () => {
     const session = createTestSession()
     const runtime = DocumentToolRuntime.createForSession({ session })
@@ -165,7 +180,10 @@ describe('document tool unit tests', () => {
     const { context, events } = createEventCollector()
 
     await tools.get('insert_text')!.execute?.({ text: 'Hello' }, context)
-    const started = await tools.get('start_streaming_edit')!.execute?.({ mode: 'continue' }, context)
+    const started = await tools.get('start_streaming_edit')!.execute?.(
+      { mode: 'continue', contentFormat: 'plain_text' },
+      context,
+    )
     await runtime.pushStreamingText(' world')
     const stopped = await tools.get('stop_streaming_edit')!.execute?.({}, context)
 
@@ -173,6 +191,7 @@ describe('document tool unit tests', () => {
       expect.objectContaining({
         ok: true,
         mode: 'continue',
+        contentFormat: 'plain_text',
         editSessionId: expect.any(String),
       }),
     )
@@ -184,7 +203,10 @@ describe('document tool unit tests', () => {
     )
     expect(readDocText(session)).toBe('Hello world')
     expect(events.filter((event) => event.name === 'agent-streaming-edit')).toEqual([
-      { name: 'agent-streaming-edit', value: { active: true, mode: 'continue' } },
+      {
+        name: 'agent-streaming-edit',
+        value: { active: true, mode: 'continue', contentFormat: 'plain_text' },
+      },
       { name: 'agent-streaming-edit', value: { active: false } },
     ])
 
