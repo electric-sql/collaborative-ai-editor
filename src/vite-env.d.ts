@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_DURABLE_STREAMS_BASE_URL?: string
+  readonly VITE_YJS_SERVICE_NAME?: string
 }
 
 interface ImportMeta {

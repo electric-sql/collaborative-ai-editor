@@ -17,7 +17,8 @@ import { DocumentToolRuntime } from '../../lib/agent/documentToolRuntime'
 import {
   chatSessionStreamPath,
   durableStreamResourceUrl,
-  getDurableStreamsOriginServer,
+  getTanStackAiDurableStreamsHeadersServer,
+  getTanStackAiDurableStreamsOriginServer,
 } from '../../lib/yjs/streamIds'
 
 function latestUserMessage(messages: DurableSessionMessage[]): DurableSessionMessage | null {
@@ -112,7 +113,8 @@ export const Route = createFileRoute('/api/chat')({
         }
 
         const { messages, runAgent, agentMode } = parseChatBody(body)
-        const origin = getDurableStreamsOriginServer()
+        const origin = getTanStackAiDurableStreamsOriginServer()
+        const headers = getTanStackAiDurableStreamsHeadersServer()
         const streamPath = chatSessionStreamPath(docKey, sessionId)
         const writeUrl = durableStreamResourceUrl(origin, streamPath)
 
@@ -122,6 +124,7 @@ export const Route = createFileRoute('/api/chat')({
         return toDurableChatSessionResponse({
           stream: {
             writeUrl,
+            ...(headers ? { headers } : {}),
             createIfMissing: true,
           },
           newMessages,

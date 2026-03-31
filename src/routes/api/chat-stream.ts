@@ -3,7 +3,8 @@ import { ensureDurableChatSessionStream } from '@durable-streams/tanstack-ai-tra
 import {
   chatSessionStreamPath,
   durableStreamResourceUrl,
-  getDurableStreamsOriginServer,
+  getTanStackAiDurableStreamsHeadersServer,
+  getTanStackAiDurableStreamsOriginServer,
 } from '../../lib/yjs/streamIds'
 
 const DS_FORWARD_PARAMS = ['offset', 'live', 'cursor'] as const
@@ -23,13 +24,15 @@ export const Route = createFileRoute('/api/chat-stream')({
           return Response.json({ error: 'docKey is required' }, { status: 400 })
         }
 
-        const origin = getDurableStreamsOriginServer()
+        const origin = getTanStackAiDurableStreamsOriginServer()
+        const headersRecord = getTanStackAiDurableStreamsHeadersServer()
         const streamPath = chatSessionStreamPath(docKey, sessionId)
         const writeUrl = durableStreamResourceUrl(origin, streamPath)
 
         // Ensure first-time subscribers don't get 404 before any message is sent.
         await ensureDurableChatSessionStream({
           writeUrl,
+          ...(headersRecord ? { headers: headersRecord } : {}),
           createIfMissing: true,
         })
 
@@ -43,6 +46,11 @@ export const Route = createFileRoute('/api/chat-stream')({
         const accept = request.headers.get('Accept')
         const headers = new Headers()
         if (accept) headers.set('Accept', accept)
+        if (headersRecord) {
+          for (const [key, value] of Object.entries(headersRecord)) {
+            headers.set(key, value)
+          }
+        }
 
         return fetch(upstream.toString(), {
           method: 'GET',

@@ -105,14 +105,12 @@ npm install
 ```bash
 OPENAI_API_KEY=your_openai_key_here
 OPENAI_MODEL=gpt-5.4
-```
 
-3. Create `.env.development`:
-
-```bash
-VITE_DURABLE_STREAMS_BASE_URL=http://127.0.0.1:4438
-VITE_YJS_SERVICE_NAME=y-llm-demo-v2
-VITE_YJS_DOC_LAYOUT_VERSION=v3
+# Optional server-side upstream config for Durable Streams services
+# DURABLE_STREAMS_YJS_BASE_URL=http://127.0.0.1:4438
+# DURABLE_STREAMS_CHAT_BASE_URL=http://127.0.0.1:4437
+# DURABLE_STREAMS_YJS_SECRET=your-yjs-secret
+# DURABLE_STREAMS_CHAT_SECRET=your-chat-secret
 ```
 
 ## Run locally

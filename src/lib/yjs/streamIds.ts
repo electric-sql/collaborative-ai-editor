@@ -8,10 +8,23 @@
  */
 
 const YJS_DOC_ROOT = 'rooms'
-const CHAT_ROOT = 'docs'
+const CHAT_ROOT = 'chats'
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {}
-const DOC_LAYOUT_VERSION =
-  viteEnv.VITE_YJS_DOC_LAYOUT_VERSION?.trim() || 'v3'
+const DOC_LAYOUT_VERSION = 'v3'
+
+function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    const trimmed = value?.trim()
+    if (trimmed) return trimmed
+  }
+  return undefined
+}
+
+function authHeadersFromSecret(secret: string | undefined): Record<string, string> | undefined {
+  const trimmed = secret?.trim()
+  if (!trimmed) return undefined
+  return { Authorization: `Bearer ${trimmed}` }
+}
 
 /** HTTP path segment for `/v1/yjs/:service` (see `durableStreamsYjsBaseUrl`). */
 export const YJS_SERVICE_NAME =
@@ -57,28 +70,50 @@ export function durableStreamResourceUrl(origin: string, streamPath: string): st
   return `${origin.replace(/\/$/, '')}/v1/stream/${streamPath}`
 }
 
-/** Server-side origin for Durable Streams (Node); prefers `DURABLE_STREAMS_BASE_URL` then `VITE_DURABLE_STREAMS_BASE_URL`. */
-export function getDurableStreamsOriginServer(): string {
-  if (typeof process !== 'undefined' && process.env.DURABLE_STREAMS_BASE_URL) {
-    return process.env.DURABLE_STREAMS_BASE_URL.replace(/\/$/, '')
-  }
-  const vite = viteEnv.VITE_DURABLE_STREAMS_BASE_URL
-  if (typeof vite === 'string' && vite.length > 0) {
-    return vite.replace(/\/$/, '')
-  }
-  return 'http://127.0.0.1:4438'
-}
-
-/** Origin only, e.g. `http://127.0.0.1:4438` (no trailing slash). */
-export function getDurableStreamsOrigin(): string {
-  const u = viteEnv.VITE_DURABLE_STREAMS_BASE_URL
-  if (typeof u === 'string' && u.length > 0) {
-    return u.replace(/\/$/, '')
-  }
-  return 'http://127.0.0.1:4438'
+/** Server-side origin for the Yjs Durable Streams service. */
+export function getYjsDurableStreamsOriginServer(): string {
+  return (
+    firstNonEmpty(
+      typeof process !== 'undefined' ? process.env.DURABLE_STREAMS_YJS_BASE_URL : undefined,
+      typeof process !== 'undefined' ? process.env.DURABLE_STREAMS_BASE_URL : undefined,
+    ) ?? 'http://127.0.0.1:4438'
+  ).replace(/\/$/, '')
 }
 
 /** Full Yjs HTTP base URL including service segment. */
 export function durableStreamsYjsBaseUrl(origin: string): string {
   return `${origin.replace(/\/$/, '')}/v1/yjs/${YJS_SERVICE_NAME}`
+}
+
+export function appYjsProxyBaseUrl(): string {
+  if (typeof window !== 'undefined' && typeof window.location?.origin === 'string') {
+    return `${window.location.origin}/api/yjs`
+  }
+  return `/api/yjs`
+}
+
+/** Server-side origin for the TanStack AI Durable Streams service. */
+export function getTanStackAiDurableStreamsOriginServer(): string {
+  return (
+    firstNonEmpty(
+      typeof process !== 'undefined' ? process.env.DURABLE_STREAMS_CHAT_BASE_URL : undefined,
+      typeof process !== 'undefined' ? process.env.DURABLE_STREAMS_BASE_URL : undefined,
+    ) ?? 'http://127.0.0.1:4437'
+  ).replace(/\/$/, '')
+}
+
+export function getYjsDurableStreamsHeadersServer(): Record<string, string> | undefined {
+  return authHeadersFromSecret(
+    firstNonEmpty(
+      typeof process !== 'undefined' ? process.env.DURABLE_STREAMS_YJS_SECRET : undefined,
+    ),
+  )
+}
+
+export function getTanStackAiDurableStreamsHeadersServer(): Record<string, string> | undefined {
+  return authHeadersFromSecret(
+    firstNonEmpty(
+      typeof process !== 'undefined' ? process.env.DURABLE_STREAMS_CHAT_SECRET : undefined,
+    ),
+  )
 }

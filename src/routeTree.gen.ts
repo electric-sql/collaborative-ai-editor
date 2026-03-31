@@ -13,7 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DocNameRouteImport } from './routes/doc/$name'
 import { Route as ApiChatStreamRouteImport } from './routes/api/chat-stream'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as ApiYjsSplatRouteImport } from './routes/api/yjs/$'
 import { Route as ApiAgentStopRouteImport } from './routes/api/agent/stop'
+import { Route as ApiYjsDocsSplatRouteImport } from './routes/api/yjs/docs/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -35,9 +37,19 @@ const ApiChatRoute = ApiChatRouteImport.update({
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiYjsSplatRoute = ApiYjsSplatRouteImport.update({
+  id: '/api/yjs/$',
+  path: '/api/yjs/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAgentStopRoute = ApiAgentStopRouteImport.update({
   id: '/api/agent/stop',
   path: '/api/agent/stop',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiYjsDocsSplatRoute = ApiYjsDocsSplatRouteImport.update({
+  id: '/api/yjs/docs/$',
+  path: '/api/yjs/docs/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -47,6 +59,8 @@ export interface FileRoutesByFullPath {
   '/api/chat-stream': typeof ApiChatStreamRoute
   '/doc/$name': typeof DocNameRoute
   '/api/agent/stop': typeof ApiAgentStopRoute
+  '/api/yjs/$': typeof ApiYjsSplatRoute
+  '/api/yjs/docs/$': typeof ApiYjsDocsSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +68,8 @@ export interface FileRoutesByTo {
   '/api/chat-stream': typeof ApiChatStreamRoute
   '/doc/$name': typeof DocNameRoute
   '/api/agent/stop': typeof ApiAgentStopRoute
+  '/api/yjs/$': typeof ApiYjsSplatRoute
+  '/api/yjs/docs/$': typeof ApiYjsDocsSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,6 +78,8 @@ export interface FileRoutesById {
   '/api/chat-stream': typeof ApiChatStreamRoute
   '/doc/$name': typeof DocNameRoute
   '/api/agent/stop': typeof ApiAgentStopRoute
+  '/api/yjs/$': typeof ApiYjsSplatRoute
+  '/api/yjs/docs/$': typeof ApiYjsDocsSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -71,8 +89,17 @@ export interface FileRouteTypes {
     | '/api/chat-stream'
     | '/doc/$name'
     | '/api/agent/stop'
+    | '/api/yjs/$'
+    | '/api/yjs/docs/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/chat' | '/api/chat-stream' | '/doc/$name' | '/api/agent/stop'
+  to:
+    | '/'
+    | '/api/chat'
+    | '/api/chat-stream'
+    | '/doc/$name'
+    | '/api/agent/stop'
+    | '/api/yjs/$'
+    | '/api/yjs/docs/$'
   id:
     | '__root__'
     | '/'
@@ -80,6 +107,8 @@ export interface FileRouteTypes {
     | '/api/chat-stream'
     | '/doc/$name'
     | '/api/agent/stop'
+    | '/api/yjs/$'
+    | '/api/yjs/docs/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -88,6 +117,8 @@ export interface RootRouteChildren {
   ApiChatStreamRoute: typeof ApiChatStreamRoute
   DocNameRoute: typeof DocNameRoute
   ApiAgentStopRoute: typeof ApiAgentStopRoute
+  ApiYjsSplatRoute: typeof ApiYjsSplatRoute
+  ApiYjsDocsSplatRoute: typeof ApiYjsDocsSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -120,11 +151,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/yjs/$': {
+      id: '/api/yjs/$'
+      path: '/api/yjs/$'
+      fullPath: '/api/yjs/$'
+      preLoaderRoute: typeof ApiYjsSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/agent/stop': {
       id: '/api/agent/stop'
       path: '/api/agent/stop'
       fullPath: '/api/agent/stop'
       preLoaderRoute: typeof ApiAgentStopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/yjs/docs/$': {
+      id: '/api/yjs/docs/$'
+      path: '/api/yjs/docs/$'
+      fullPath: '/api/yjs/docs/$'
+      preLoaderRoute: typeof ApiYjsDocsSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -136,6 +181,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiChatStreamRoute: ApiChatStreamRoute,
   DocNameRoute: DocNameRoute,
   ApiAgentStopRoute: ApiAgentStopRoute,
+  ApiYjsSplatRoute: ApiYjsSplatRoute,
+  ApiYjsDocsSplatRoute: ApiYjsDocsSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

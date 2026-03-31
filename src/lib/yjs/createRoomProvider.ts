@@ -2,9 +2,8 @@ import { YjsProvider } from '@durable-streams/y-durable-streams'
 import * as Y from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import {
+  appYjsProxyBaseUrl,
   docCollaborationDocId,
-  durableStreamsYjsBaseUrl,
-  getDurableStreamsOrigin,
 } from './streamIds'
 
 /** Shared `Y.XmlFragment` name for the ProseMirror document. */
@@ -31,7 +30,7 @@ export function createRoomProvider(options: CreateRoomProviderOptions): {
     },
   })
 
-  const baseUrl = durableStreamsYjsBaseUrl(getDurableStreamsOrigin())
+  const baseUrl = appYjsProxyBaseUrl()
   const docId = docCollaborationDocId(options.docKey)
 
   const provider = new YjsProvider({
@@ -58,10 +57,14 @@ export function createRoomProvider(options: CreateRoomProviderOptions): {
     value === 0x0a ||
     value === 0x0d
   const providerHeaders = providerDebug.headers as Record<string, string> | undefined
-  const providerDocUrl =
-    typeof providerDebug.docUrl === 'function'
-      ? (providerDebug.docUrl() as string)
-      : `${baseUrl}/docs/${docId}`
+  const providerDocUrl = `${baseUrl}/docs/${docId}`
+  if (typeof providerDebug.docUrl === 'function') {
+    providerDebug.docUrl = () => providerDocUrl
+  }
+  if (typeof providerDebug.awarenessUrl === 'function') {
+    providerDebug.awarenessUrl = (name: string = 'default') =>
+      `${providerDocUrl}?awareness=${encodeURIComponent(name)}`
+  }
 
   if (typeof providerDebug.discoverSnapshot === 'function') {
     providerDebug.discoverSnapshot = async (ctx: {
@@ -72,10 +75,11 @@ export function createRoomProvider(options: CreateRoomProviderOptions): {
       const response = await fetch(url, {
         method: 'GET',
         headers: providerHeaders,
-        redirect: 'follow',
+        redirect: 'manual',
         signal: ctx.controller.signal,
       })
-      const finalUrl = response.url || url
+      const location = response.headers.get('location')
+      const finalUrl = location ? new URL(location, url).toString() : response.url || url
       const resolvedOffset = new URL(finalUrl).searchParams.get('offset')
       await response.body?.cancel().catch(() => {})
 
