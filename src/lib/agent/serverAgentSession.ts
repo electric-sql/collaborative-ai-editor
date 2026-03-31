@@ -2,10 +2,8 @@ import { YjsProvider } from '@durable-streams/y-durable-streams'
 import { Doc, type XmlFragment, relativePositionToJSON } from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import {
+  getAppOriginServer,
   docCollaborationDocId,
-  durableStreamsYjsBaseUrl,
-  getYjsDurableStreamsHeadersServer,
-  getYjsDurableStreamsOriginServer,
 } from '../yjs/streamIds'
 import { Y_XML_FRAGMENT_KEY } from '../yjs/createRoomProvider'
 import { absolutePositionToRelativePosition } from 'y-prosemirror'
@@ -54,16 +52,14 @@ export function createServerAgentSession(docKey: string, sessionId: string): Ser
 
   setUserFields('idle')
 
-  const baseUrl = durableStreamsYjsBaseUrl(getYjsDurableStreamsOriginServer())
+  const baseUrl = `${getAppOriginServer()}/api/yjs`
   const docId = docCollaborationDocId(docKey)
-  const headers = getYjsDurableStreamsHeadersServer()
 
   const provider = new YjsProvider({
     doc: ydoc,
     baseUrl,
     docId,
     awareness,
-    ...(headers ? { headers } : {}),
   })
 
   const fragment = ydoc.getXmlFragment(Y_XML_FRAGMENT_KEY)

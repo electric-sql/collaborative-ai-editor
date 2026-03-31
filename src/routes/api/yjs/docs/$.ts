@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import {
   durableStreamsYjsBaseUrl,
-  getYjsDurableStreamsHeadersServer,
   getYjsDurableStreamsOriginServer,
+  getYjsDurableStreamsSecretServer,
 } from '../../../../lib/yjs/streamIds'
 
 function upstreamYjsDocsUrl(requestUrl: string, splat: string): string {
@@ -11,6 +11,8 @@ function upstreamYjsDocsUrl(requestUrl: string, splat: string): string {
     `${durableStreamsYjsBaseUrl(getYjsDurableStreamsOriginServer())}/docs/${splat.replace(/^\//, '')}`,
   )
   incoming.searchParams.forEach((value, key) => upstream.searchParams.set(key, value))
+  const secret = getYjsDurableStreamsSecretServer()
+  if (secret) upstream.searchParams.set('secret', secret)
   return upstream.toString()
 }
 
@@ -18,12 +20,6 @@ async function proxyYjsDocsRequest(request: Request, splat: string): Promise<Res
   const upstreamUrl = upstreamYjsDocsUrl(request.url, splat)
   const requestUrl = new URL(request.url)
   const upstreamHeaders = new Headers()
-  const authHeaders = getYjsDurableStreamsHeadersServer()
-  if (authHeaders) {
-    for (const [key, value] of Object.entries(authHeaders)) {
-      upstreamHeaders.set(key, value)
-    }
-  }
   const accept = request.headers.get('accept')
   const contentType = request.headers.get('content-type')
   if (accept) upstreamHeaders.set('accept', accept)

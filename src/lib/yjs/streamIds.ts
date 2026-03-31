@@ -26,6 +26,15 @@ function authHeadersFromSecret(secret: string | undefined): Record<string, strin
   return { Authorization: `Bearer ${trimmed}` }
 }
 
+export function getAppOriginServer(): string {
+  return (
+    firstNonEmpty(
+      typeof process !== 'undefined' ? process.env.APP_BASE_URL : undefined,
+      typeof process !== 'undefined' ? process.env.PUBLIC_APP_BASE_URL : undefined,
+    ) ?? 'http://localhost:3000'
+  ).replace(/\/$/, '')
+}
+
 /** HTTP path segment for `/v1/yjs/:service` (see `durableStreamsYjsBaseUrl`). */
 export const YJS_SERVICE_NAME =
   viteEnv.VITE_YJS_SERVICE_NAME?.trim() || 'y-llm-demo-v2'
@@ -107,6 +116,12 @@ export function getYjsDurableStreamsHeadersServer(): Record<string, string> | un
     firstNonEmpty(
       typeof process !== 'undefined' ? process.env.DURABLE_STREAMS_YJS_SECRET : undefined,
     ),
+  )
+}
+
+export function getYjsDurableStreamsSecretServer(): string | undefined {
+  return firstNonEmpty(
+    typeof process !== 'undefined' ? process.env.DURABLE_STREAMS_YJS_SECRET : undefined,
   )
 }
 
