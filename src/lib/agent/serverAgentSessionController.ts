@@ -236,7 +236,7 @@ export async function runServerAgentSession(input: RunAgentInput): Promise<RunAg
       `Document key: ${input.docKey}`,
       `Current document context:\n${readDocContext(session) || '(empty document)'}`,
     ].join('\n\n')
-    const model = process.env.OPENAI_MODEL?.trim() || 'gpt-4.1-mini'
+    const model = process.env.OPENAI_MODEL?.trim() || 'gpt-5.4'
     const key = openAiApiKey()
 
     if (key === null) {

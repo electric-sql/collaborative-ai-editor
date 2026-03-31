@@ -27,7 +27,7 @@ npm install
 
 ```bash
 OPENAI_API_KEY=your_openai_key_here
-OPENAI_MODEL=gpt-4.1-mini
+OPENAI_MODEL=gpt-5.4
 ```
 
 3. Create `.env.development`:

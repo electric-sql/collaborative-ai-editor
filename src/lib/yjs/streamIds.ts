@@ -9,13 +9,13 @@
 
 const YJS_DOC_ROOT = 'rooms'
 const CHAT_ROOT = 'docs'
+const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {}
 const DOC_LAYOUT_VERSION =
-  (import.meta.env.VITE_YJS_DOC_LAYOUT_VERSION as string | undefined)?.trim() || 'v3'
+  viteEnv.VITE_YJS_DOC_LAYOUT_VERSION?.trim() || 'v3'
 
 /** HTTP path segment for `/v1/yjs/:service` (see `durableStreamsYjsBaseUrl`). */
 export const YJS_SERVICE_NAME =
-  (import.meta.env.VITE_YJS_SERVICE_NAME as string | undefined)?.trim() ||
-  'y-llm-demo-v2'
+  viteEnv.VITE_YJS_SERVICE_NAME?.trim() || 'y-llm-demo-v2'
 
 export function sanitizeDocKey(docKey: string): string {
   if (docKey.includes('/') || docKey.includes('?') || docKey.includes('#')) {
@@ -62,7 +62,7 @@ export function getDurableStreamsOriginServer(): string {
   if (typeof process !== 'undefined' && process.env.DURABLE_STREAMS_BASE_URL) {
     return process.env.DURABLE_STREAMS_BASE_URL.replace(/\/$/, '')
   }
-  const vite = import.meta.env.VITE_DURABLE_STREAMS_BASE_URL
+  const vite = viteEnv.VITE_DURABLE_STREAMS_BASE_URL
   if (typeof vite === 'string' && vite.length > 0) {
     return vite.replace(/\/$/, '')
   }
@@ -71,7 +71,7 @@ export function getDurableStreamsOriginServer(): string {
 
 /** Origin only, e.g. `http://127.0.0.1:4438` (no trailing slash). */
 export function getDurableStreamsOrigin(): string {
-  const u = import.meta.env.VITE_DURABLE_STREAMS_BASE_URL
+  const u = viteEnv.VITE_DURABLE_STREAMS_BASE_URL
   if (typeof u === 'string' && u.length > 0) {
     return u.replace(/\/$/, '')
   }

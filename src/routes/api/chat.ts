@@ -1,56 +1,24 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { chat, type StreamChunk } from '@tanstack/ai'
+import { openaiText } from '@tanstack/ai-openai'
 import {
   toDurableChatSessionResponse,
 } from '@durable-streams/tanstack-ai-transport'
 import type { DurableSessionMessage } from '@durable-streams/tanstack-ai-transport'
+import { attachAgentRunController, releaseAgentRunAbort } from '../../lib/agent/agentRunCancellation'
+import {
+  parseChatBody,
+  routeAgentStreamChunks,
+  toModelMessages,
+} from '../../lib/agent/chatStreamRouting'
+import { buildChatToolSystemPrompt } from '../../lib/agent/prompts'
+import { createDocumentTools } from '../../lib/agent/documentTools'
+import { DocumentToolRuntime } from '../../lib/agent/documentToolRuntime'
 import {
   chatSessionStreamPath,
   durableStreamResourceUrl,
   getDurableStreamsOriginServer,
 } from '../../lib/yjs/streamIds'
-import { runServerAgentSession } from '../../lib/agent/serverAgentSessionController'
-
-function parseChatBody(json: unknown): {
-  messages: DurableSessionMessage[]
-  runAgent: boolean
-  agentMode: 'continue' | 'insert' | 'rewrite'
-} {
-  if (!json || typeof json !== 'object') {
-    return { messages: [], runAgent: true, agentMode: 'continue' }
-  }
-  const o = json as {
-    messages?: unknown
-    runAgent?: unknown
-    agentMode?: unknown
-    data?: unknown
-  }
-  const data =
-    o.data && typeof o.data === 'object' ? (o.data as Record<string, unknown>) : undefined
-  const messagesRaw = o.messages
-  if (!Array.isArray(messagesRaw)) {
-    return { messages: [], runAgent: true, agentMode: 'continue' }
-  }
-  const messages: DurableSessionMessage[] = []
-  for (const item of messagesRaw) {
-    const m = normalizeIncomingMessage(item)
-    if (m) messages.push(m)
-  }
-  const runAgent =
-    typeof data?.runAgent === 'boolean'
-      ? data.runAgent
-      : typeof o.runAgent === 'boolean'
-        ? o.runAgent
-        : true
-  const agentMode =
-    data?.agentMode === 'insert' ||
-    data?.agentMode === 'rewrite' ||
-    data?.agentMode === 'continue'
-      ? data.agentMode
-      : o.agentMode === 'insert' || o.agentMode === 'rewrite' || o.agentMode === 'continue'
-        ? o.agentMode
-      : 'continue'
-  return { messages, runAgent, agentMode }
-}
 
 function latestUserMessage(messages: DurableSessionMessage[]): DurableSessionMessage | null {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -62,114 +30,62 @@ function latestUserMessage(messages: DurableSessionMessage[]): DurableSessionMes
   return null
 }
 
-function lastUserText(messages: DurableSessionMessage[]): string {
-  const message = latestUserMessage(messages)
-  if (!message) return ''
-  const parts = message.parts ?? []
-  const chunks: string[] = []
-  for (const p of parts) {
-    if (p.type === 'text' && typeof p.content === 'string') {
-      chunks.push(p.content)
-    } else if (p.type === 'text' && typeof p.text === 'string') {
-      chunks.push(p.text)
-    }
-  }
-  return chunks.join('')
-}
-
 async function* agentResponseStream(input: {
   docKey: string
   sessionId: string
   mode: 'continue' | 'insert' | 'rewrite'
-  prompt: string
+  messages: DurableSessionMessage[]
   runAgent: boolean
-}): AsyncIterable<Record<string, unknown>> {
+}): AsyncIterable<StreamChunk> {
   if (!input.runAgent) return
 
-  const runId = crypto.randomUUID()
-  yield {
-    type: 'RUN_STARTED',
-    runId,
-  }
+  const abortController = attachAgentRunController(input.sessionId)
+  let runtime: DocumentToolRuntime | null = null
 
   try {
-    const result = await runServerAgentSession({
+    runtime = await DocumentToolRuntime.create({
       docKey: input.docKey,
       sessionId: input.sessionId,
-      mode: input.mode,
-      prompt: input.prompt,
+      signal: abortController.signal,
+    })
+    const stream = chat({
+      adapter: openaiText((process.env.OPENAI_MODEL?.trim() || 'gpt-5.4') as any),
+      messages: toModelMessages(input.messages) as any,
+      systemPrompts: [buildChatToolSystemPrompt(input.mode)],
+      tools: createDocumentTools(runtime),
+      abortController,
     })
 
-    if (!result.assistantText) return
-
-    const messageId = crypto.randomUUID()
-    const timestamp = Date.now()
-    yield {
-      type: 'TEXT_MESSAGE_START',
-      messageId,
-      role: 'assistant',
-      model: 'electra',
-      timestamp,
-    }
-    yield {
-      type: 'TEXT_MESSAGE_CONTENT',
-      messageId,
-      delta: result.assistantText,
-      model: 'electra',
-      timestamp,
-    }
-    yield {
-      type: 'TEXT_MESSAGE_END',
-      messageId,
-      model: 'electra',
-      timestamp,
-    }
-    yield {
-      type: 'RUN_FINISHED',
-      runId,
-      finishReason: result.cancelled ? 'stop' : 'stop',
+    for await (const chunk of routeAgentStreamChunks(stream, runtime)) {
+      yield chunk
     }
   } catch (error) {
-    yield {
+    const chunk: StreamChunk = {
       type: 'RUN_ERROR',
-      runId,
+      timestamp: Date.now(),
       error: {
         message: error instanceof Error ? error.message : String(error),
       },
     }
+    yield chunk
+    yield {
+      type: 'CUSTOM',
+      timestamp: Date.now(),
+      name: 'agent-run-error',
+      value: {
+        sessionId: input.sessionId,
+      },
+    }
     console.error('[chat] agent response stream failed', error)
-  }
-}
-
-function normalizeIncomingMessage(item: unknown): DurableSessionMessage | null {
-  if (!item || typeof item !== 'object') return null
-  const o = item as Record<string, unknown>
-  const id = typeof o.id === 'string' ? o.id : undefined
-  const role =
-    o.role === 'user' || o.role === 'assistant' || o.role === 'system' || o.role === 'tool'
-      ? o.role
-      : 'user'
-
-  if (Array.isArray(o.parts)) {
-    return {
-      id,
-      role,
-      parts: o.parts as DurableSessionMessage['parts'],
+  } finally {
+    try {
+      if (runtime && runtime.isStreamingEditActive()) {
+        runtime.stopStreamingEdit(abortController.signal.aborted)
+      }
+    } finally {
+      runtime?.destroy()
+      releaseAgentRunAbort(input.sessionId)
     }
-  }
-
-  if (typeof o.content === 'string') {
-    return {
-      id,
-      role,
-      parts: [{ type: 'text', content: o.content }],
-    }
-  }
-
-  return {
-    id,
-    role,
-    parts: [],
   }
 }
 
@@ -213,7 +129,7 @@ export const Route = createFileRoute('/api/chat')({
             docKey,
             sessionId,
             mode: agentMode,
-            prompt: lastUserText(messages),
+            messages,
             runAgent,
           }),
         })
