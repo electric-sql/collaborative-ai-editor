@@ -116,6 +116,20 @@ textarea {
   line-height: 1.55;
 }
 
+.landing-overview__text + .landing-overview__text {
+  margin-top: 0.5rem;
+}
+
+.landing-overview__link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.landing-overview__link:hover {
+  color: var(--accent-hover);
+}
+
 .landing-links {
   display: flex;
   gap: 0.5rem;

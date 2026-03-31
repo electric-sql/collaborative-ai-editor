@@ -84,6 +84,18 @@ function Home() {
             The document is shared with Yjs over HTTP, while chat, tool calls, and model
             streams run through the Durable Session pattern for TanStack AI.
           </p>
+          <p className="landing-overview__text">View the demo source on GitHub:
+            {' '}
+            <a
+              className="landing-overview__link"
+              href="https://github.com/electric-sql/collaborative-ai-editor"
+              target="_blank"
+              rel="noreferrer"
+            >
+              demo source on GitHub
+            </a>
+            .
+          </p>
           <div className="landing-links">
             <a className="landing-link" href="https://durablestreams.com" target="_blank" rel="noreferrer">
               Durable Streams
@@ -99,14 +111,6 @@ function Home() {
             </a>
             <a className="landing-link" href="http://prosemirror.net" target="_blank" rel="noreferrer">
               ProseMirror
-            </a>
-            <a
-              className="landing-link"
-              href="https://github.com/electric-sql/collaborative-ai-editor"
-              target="_blank"
-              rel="noreferrer"
-            >
-              GitHub demo
             </a>
           </div>
         </div>
