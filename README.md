@@ -105,6 +105,8 @@ npm install
 ```bash
 OPENAI_API_KEY=your_openai_key_here
 OPENAI_MODEL=gpt-5.4
+APP_BASE_URL=http://localhost:3000
+PUBLIC_APP_BASE_URL=http://localhost:3000
 
 # Optional server-side upstream config for Durable Streams services
 # DURABLE_STREAMS_YJS_BASE_URL=http://127.0.0.1:4438
@@ -137,6 +139,82 @@ On first load, enter a document name to create/join a room.
 - `npm run typecheck` - TypeScript checks
 - `npm run build` - production build
 - `npm run preview` - preview production output
+- `npm run preview:cloudflare` - build and preview the Cloudflare Worker locally with Wrangler
+- `npm run deploy:cloudflare` - build and deploy the app to Cloudflare Workers
+- `npm run cf:typegen` - generate Wrangler types if you add Cloudflare bindings later
+
+## Deploy to Cloudflare Workers
+
+This repo is configured to deploy the TanStack Start app to Cloudflare Workers via Nitro's
+`cloudflare_module` preset.
+
+What runs on Cloudflare:
+
+- the app shell
+- SSR/server routes
+- `/api/chat`
+- `/api/chat-stream`
+- `/api/yjs/*` proxy routes
+
+What does not run on Cloudflare in this repo:
+
+- the local Durable Streams dev server in `src/dev/durableStreamsServer.ts`
+
+Before deploying, make sure your production Durable Streams services are already hosted and
+reachable from the public internet. The Worker cannot use `127.0.0.1`.
+
+### Cloudflare config in this repo
+
+- `nitro.config.mjs` targets Cloudflare Workers and emits `.output/server/wrangler.json`
+- `wrangler.jsonc` defines the Worker name plus non-secret defaults for the custom domain
+- `.dev.vars.example` shows the env vars needed for local Wrangler preview
+
+### Required Worker environment variables
+
+Set these in the Cloudflare dashboard or with Wrangler:
+
+- `APP_BASE_URL=https://collaborative-ai-editor.examples.electric-sql.com`
+- `PUBLIC_APP_BASE_URL=https://collaborative-ai-editor.examples.electric-sql.com`
+- `OPENAI_MODEL=gpt-5.4`
+- `DURABLE_STREAMS_YJS_BASE_URL=<hosted yjs upstream>`
+- `DURABLE_STREAMS_CHAT_BASE_URL=<hosted chat upstream>`
+
+Set these as secrets if you use them:
+
+- `OPENAI_API_KEY`
+- `DURABLE_STREAMS_YJS_SECRET`
+- `DURABLE_STREAMS_CHAT_SECRET`
+
+### Local preview with Wrangler
+
+1. Copy `.dev.vars.example` to `.dev.vars`.
+2. Replace the placeholder Durable Streams URLs with your real hosted upstreams.
+3. Set the real `OPENAI_API_KEY`.
+4. Run:
+
+```bash
+npm run preview:cloudflare
+```
+
+### Production deploy
+
+1. Authenticate Wrangler:
+
+```bash
+npx wrangler login
+```
+
+2. Build and deploy:
+
+```bash
+npm run deploy:cloudflare
+```
+
+3. In the Cloudflare dashboard, add the custom domain:
+
+- `collaborative-ai-editor.examples.electric-sql.com`
+
+Use a custom domain because the Worker is the application origin.
 
 ## App behavior
 

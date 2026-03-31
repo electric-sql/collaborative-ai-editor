@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "collaborative-ai-editor",
+  "compatibility_date": "2026-03-31",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env"
+  ],
+  "vars": {
+    "APP_BASE_URL": "https://collaborative-ai-editor.examples.electric-sql.com",
+    "PUBLIC_APP_BASE_URL": "https://collaborative-ai-editor.examples.electric-sql.com",
+    "OPENAI_MODEL": "gpt-5.4"
+  }
+}

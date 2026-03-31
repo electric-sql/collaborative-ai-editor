@@ -1,0 +1,8 @@
+APP_BASE_URL=https://collaborative-ai-editor.examples.electric-sql.com
+PUBLIC_APP_BASE_URL=https://collaborative-ai-editor.examples.electric-sql.com
+OPENAI_API_KEY=sk-XXX
+OPENAI_MODEL=gpt-5.4
+DURABLE_STREAMS_YJS_BASE_URL=https://your-yjs-service.example.com
+DURABLE_STREAMS_CHAT_BASE_URL=https://your-chat-service.example.com
+# DURABLE_STREAMS_YJS_SECRET=yjs-secret
+# DURABLE_STREAMS_CHAT_SECRET=chat-secret
