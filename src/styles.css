@@ -1,0 +1,374 @@
+@import 'prosemirror-view/style/prosemirror.css';
+
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  line-height: 1.45;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.page-split {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.page-split-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-title {
+  font-size: 1.35rem;
+  font-weight: 650;
+  margin: 0 0 0.5rem;
+}
+
+.page-lead {
+  margin: 0 0 1rem;
+  color: #444;
+  font-size: 0.95rem;
+}
+
+.doc-picker {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  max-width: 680px;
+}
+
+.doc-picker-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.doc-picker-button {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #f0f0f0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.editor-wrap {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.presence-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.presence-pill {
+  font-size: 0.8rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid #ccc;
+  background: #f6f6f6;
+}
+
+.editor-surface-wrap {
+  position: relative;
+}
+
+.editor-surface {
+  min-height: 280px;
+  outline: none;
+}
+
+.editor-surface:focus {
+  outline: 1px solid #aac;
+}
+
+.editor-agent-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.5rem;
+}
+
+.editor-agent-prompt {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.editor-agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.editor-agent-actions button {
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f4f4f4;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.editor-agent-actions button:hover:not(:disabled) {
+  background: #e8e8e8;
+}
+
+.editor-agent-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.editor-agent-stop {
+  border-color: #c94079 !important;
+  color: #8b1538;
+}
+
+.editor-agent-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #b00020;
+}
+
+.agent-overlay {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  max-width: min(100%, 420px);
+  pointer-events: none;
+}
+
+.agent-overlay-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  background: #ede9fe;
+  color: #5b21b6;
+  border: 1px solid #c4b5fd;
+}
+
+.agent-overlay-tail {
+  font-size: 0.8rem;
+  color: #444;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px dashed #c4b5fd;
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ProseMirror-yjs-cursor--agent {
+  border-color: #7c3aed !important;
+}
+
+.ProseMirror-yjs-cursor--agent > div {
+  background-color: #7c3aed !important;
+}
+
+.ProseMirror-yjs-selection--agent {
+  background-color: rgba(124, 58, 237, 0.28) !important;
+}
+
+.status-line {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.ProseMirror-yjs-cursor {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid black;
+  border-right: 1px solid black;
+  border-color: #e07020;
+  word-break: normal;
+  pointer-events: none;
+}
+
+.ProseMirror-yjs-cursor > div {
+  position: absolute;
+  top: -1.05em;
+  left: -1px;
+  font-size: 12px;
+  background-color: #e07020;
+  font-family: sans-serif;
+  font-weight: 500;
+  line-height: normal;
+  user-select: none;
+  color: white;
+  padding: 0 4px;
+  white-space: nowrap;
+  border-radius: 2px;
+}
+
+.chat-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: min(80vh, 640px);
+}
+
+.chat-heading {
+  font-size: 1rem;
+  font-weight: 650;
+  margin: 0;
+}
+
+.chat-meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.chat-meta code {
+  font-size: 0.8em;
+}
+
+.chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.5rem;
+  background: #fafafa;
+}
+
+.chat-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.chat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chat-msg {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 4px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+}
+
+.chat-msg-user {
+  border-left: 3px solid #2c7be5;
+}
+
+.chat-msg-assistant {
+  border-left: 3px solid #2d9d6c;
+}
+
+.chat-role {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+  margin-bottom: 0.2rem;
+}
+
+.chat-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #b00020;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.chat-send {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f0f0f0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.chat-send:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.chat-send:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chat-status {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #666;
+}
+
+@media (max-width: 860px) {
+  .page-split {
+    flex-direction: column;
+  }
+
+  .chat-sidebar {
+    width: 100%;
+    max-height: none;
+  }
+}

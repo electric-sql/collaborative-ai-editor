@@ -1,0 +1,8 @@
+node_modules
+.output
+.vite
+.durable-streams-data
+dist
+*.local
+.DS_Store
+.env
