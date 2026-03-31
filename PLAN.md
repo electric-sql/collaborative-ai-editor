@@ -171,11 +171,9 @@ Use this file shape:
 * `src/lib/chat/createDurableChatConnection.ts`
 * `src/routes/api/chat.ts`
 * `src/routes/api/chat-stream.ts`
-* `src/routes/api/agent/run.ts`
 * `src/dev/durableStreamsServer.ts`
 * `src/components/CollaborativeEditor.tsx`
 * `src/components/ChatSidebar.tsx`
-* `src/components/AgentOverlay.tsx`
 * `src/components/PresenceBar.tsx`
 
 ## Milestones for the coding agent
@@ -204,7 +202,7 @@ Build the sidebar chat UI and wire it to Durable Streams transport with `sendUrl
 
 ### Milestone 4: server agent peer + write route
 
-Create a server-side agent peer with its own awareness identity and provider connection. Add a route (for example `/api/agent/run`) that runs the LLM chat loop and edits the server `Y.Doc` directly using stable-prefix commits.
+Create a server-side agent peer with its own awareness identity and provider connection. Run the LLM chat loop through `/api/chat` with tool-based editing that updates the server `Y.Doc` directly.
 
 ### Milestone 5: insert mode
 
@@ -214,9 +212,9 @@ Implement “continue writing” and “insert at cursor” using relative-posit
 
 Implement “rewrite selection” using start/end relative positions and progressive replacement. Keep this limited to textblock content in v1.
 
-### Milestone 7: overlay tail
+### Milestone 7: streamed agent feedback
 
-Add a React overlay for the mutable tail, positioned with `useEditorEffect`, and an AI status pill driven by awareness state.
+Add streamed agent feedback in the chat sidebar and/or editor-driven presence UI so users can see thinking, tool activity, and in-progress insertions.
 
 ### Milestone 8: concurrency test
 

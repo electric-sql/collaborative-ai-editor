@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { parseMarkdownDocument } from '../../src/lib/agent/markdownToProsemirror'
-import { takeStableMarkdownPrefix } from '../../src/lib/agent/markdownStability'
 import { DocumentToolRuntime } from '../../src/lib/agent/documentToolRuntime'
 import { createTestSession, readDocJson, readDocText } from './testUtils'
 
 describe('markdown streaming unit tests', () => {
-  it('parses headings, marks, and lists with the lezer markdown pipeline', () => {
+  it('parses headings, marks, and lists with the streaming markdown pipeline', () => {
     const doc = parseMarkdownDocument('# Title\n\nParagraph with **bold** and *italic* and `code`.\n\n- one\n- two')
 
     expect(doc.toJSON()).toEqual({
@@ -38,14 +37,6 @@ describe('markdown streaming unit tests', () => {
           ],
         },
       ],
-    })
-  })
-
-  it('only commits markdown when a safe boundary is reached', () => {
-    expect(takeStableMarkdownPrefix('# Heading')).toEqual({ stable: '', rest: '# Heading' })
-    expect(takeStableMarkdownPrefix('# Heading\n\nParagraph')).toEqual({
-      stable: '# Heading\n\n',
-      rest: 'Paragraph',
     })
   })
 

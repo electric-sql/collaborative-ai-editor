@@ -80,6 +80,7 @@ describe('DocumentToolRuntime unit tests', () => {
     runtime.selectText(match!.matchId)
 
     runtime.startStreamingEdit('rewrite')
+    expect(readDocText(session)).toBe('One  sentence.')
     await runtime.pushStreamingText('good')
     runtime.stopStreamingEdit(false)
 

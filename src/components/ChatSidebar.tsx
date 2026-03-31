@@ -301,6 +301,7 @@ export function ChatSidebar(props: {
     // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
+      textareaRef.current.focus()
     }
   }
 

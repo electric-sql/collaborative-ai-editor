@@ -138,6 +138,9 @@ export async function* routeAgentStreamChunks(
 ): AsyncIterable<StreamChunk> {
   let suppressedMessageId: string | null = null
   let suppressedInfo: { mode?: string; contentFormat?: string } | null = null
+  let pendingSyntheticSummary:
+    | { timestamp: number; model?: string; messageId: string; text: string }
+    | null = null
   let sawVisibleAssistantText = false
   let sawDocumentMutationTool = false
 
@@ -158,6 +161,9 @@ export async function* routeAgentStreamChunks(
           },
         }
         continue
+      }
+      if (pendingSyntheticSummary) {
+        pendingSyntheticSummary = null
       }
       sawVisibleAssistantText = true
       yield chunk
@@ -198,40 +204,49 @@ export async function* routeAgentStreamChunks(
           ...result,
         },
       }
-      const summaryMessageId = `${suppressedMessageId}-summary`
-      const summary = buildStreamingInsertSummary({
-        ...suppressedInfo,
-        cancelled: result.cancelled,
-      })
-      yield {
-        type: 'TEXT_MESSAGE_START',
+      pendingSyntheticSummary = {
         timestamp: chunk.timestamp,
         model: chunk.model,
-        messageId: summaryMessageId,
+        messageId: `${suppressedMessageId}-summary`,
+        text: buildStreamingInsertSummary({
+          ...suppressedInfo,
+          cancelled: result.cancelled,
+        }),
+      }
+      suppressedMessageId = null
+      suppressedInfo = null
+    }
+
+    if (chunk.type === 'RUN_FINISHED' && pendingSyntheticSummary) {
+      yield {
+        type: 'TEXT_MESSAGE_START',
+        timestamp: pendingSyntheticSummary.timestamp,
+        model: pendingSyntheticSummary.model,
+        messageId: pendingSyntheticSummary.messageId,
         role: 'assistant',
       }
       yield {
         type: 'TEXT_MESSAGE_CONTENT',
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: summaryMessageId,
-        delta: summary,
+        timestamp: pendingSyntheticSummary.timestamp,
+        model: pendingSyntheticSummary.model,
+        messageId: pendingSyntheticSummary.messageId,
+        delta: pendingSyntheticSummary.text,
       }
       yield {
         type: 'TEXT_MESSAGE_END',
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: summaryMessageId,
+        timestamp: pendingSyntheticSummary.timestamp,
+        model: pendingSyntheticSummary.model,
+        messageId: pendingSyntheticSummary.messageId,
       }
-      suppressedMessageId = null
-      suppressedInfo = null
+      pendingSyntheticSummary = null
     }
 
     if (
       chunk.type === 'RUN_FINISHED' &&
       sawDocumentMutationTool &&
       !sawVisibleAssistantText &&
-      suppressedMessageId === null
+      suppressedMessageId === null &&
+      !pendingSyntheticSummary
     ) {
       const summaryMessageId = `${chunk.runId}-summary`
       yield {
@@ -269,30 +284,14 @@ export async function* routeAgentStreamChunks(
           ...result,
         },
       }
-      const summaryMessageId = `${suppressedMessageId}-summary`
-      const summary = buildStreamingInsertSummary({
+      pendingSyntheticSummary = {
+        timestamp: chunk.timestamp,
+        model: chunk.model,
+        messageId: `${suppressedMessageId}-summary`,
+        text: buildStreamingInsertSummary({
         ...suppressedInfo,
         cancelled: result.cancelled,
-      })
-      yield {
-        type: 'TEXT_MESSAGE_START',
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: summaryMessageId,
-        role: 'assistant',
-      }
-      yield {
-        type: 'TEXT_MESSAGE_CONTENT',
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: summaryMessageId,
-        delta: summary,
-      }
-      yield {
-        type: 'TEXT_MESSAGE_END',
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: summaryMessageId,
+        }),
       }
       suppressedMessageId = null
       suppressedInfo = null
