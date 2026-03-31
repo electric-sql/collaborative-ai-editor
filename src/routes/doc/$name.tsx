@@ -15,8 +15,10 @@ import {
   LuItalic,
   LuList,
   LuListOrdered,
+  LuMessageSquare,
   LuRedo2,
   LuUndo2,
+  LuX,
 } from 'react-icons/lu'
 import { ChatSidebar, type ChatSidebarStatus } from '../../components/ChatSidebar'
 import {
@@ -61,6 +63,7 @@ function DocumentPage() {
   const { displayName, saveDisplayName, ready } = useStoredDisplayName()
   const [draftName, setDraftName] = useState(displayName)
   const [nameModalOpen, setNameModalOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   const title = useMemo(() => docKey.replace(/[-_]+/g, ' '), [docKey])
@@ -125,6 +128,14 @@ function DocumentPage() {
             />
           </div>
         )}
+
+        <Button
+          className="chat-toggle-btn"
+          aria-label={chatOpen ? 'Close chat' : 'Open chat'}
+          onClick={() => setChatOpen((v) => !v)}
+        >
+          {chatOpen ? <LuX aria-hidden="true" /> : <LuMessageSquare aria-hidden="true" />}
+        </Button>
       </Toolbar.Root>
 
       <div className="doc-shell__body">
@@ -169,7 +180,7 @@ function DocumentPage() {
 
         <Separator className="pane-separator" orientation="vertical" />
 
-        <div className="doc-pane doc-pane--chat">
+        <div className={`doc-pane doc-pane--chat${chatOpen ? ' doc-pane--chat-open' : ''}`}>
           <ChatSidebar
             docKey={docKey}
             sessionId={sessionId}
@@ -177,6 +188,13 @@ function DocumentPage() {
             onStatusChange={setChatState}
           />
         </div>
+
+        {chatOpen && (
+          <div
+            className="chat-overlay-backdrop"
+            onClick={() => setChatOpen(false)}
+          />
+        )}
       </div>
 
       {nameModalOpen && (
