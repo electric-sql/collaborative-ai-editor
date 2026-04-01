@@ -273,6 +273,7 @@ export type FormatAction = 'add' | 'remove' | 'toggle' | 'set'
 export type ContentFormat = 'plain_text' | 'markdown'
 export type CompletedDocumentMutation =
   | { kind: 'insert_text'; insertedChars: number }
+  | { kind: 'replace_matches'; replacedCount: number; insertedChars: number }
   | { kind: 'delete_selection' }
   | { kind: 'set_format'; formatKind: FormatKind; format: FormatName; action: FormatAction | 'set' }
   | {
@@ -699,6 +700,54 @@ export class DocumentToolRuntime {
       this.completedMutations.push({ kind: 'insert_text', insertedChars: text.length })
     }
     return { ok: true, insertedChars: text.length }
+  }
+
+  replaceMatches(
+    matchIds: string[],
+    text: string,
+  ): { ok: true; replacedCount: number; insertedChars: number } {
+    this.throwIfAborted()
+    const uniqueMatchIds = Array.from(new Set(matchIds))
+    if (uniqueMatchIds.length === 0) {
+      return { ok: true, replacedCount: 0, insertedChars: text.length }
+    }
+
+    const { meta } = this.getMapping()
+    const mapping = meta.mapping as ProsemirrorMapping
+    const ranges = uniqueMatchIds.map((matchId) => {
+      const handle = this.matches.get(matchId)
+      if (!handle) {
+        throw new Error(`Unknown matchId: ${matchId}`)
+      }
+      const start = resolveAnchor(this.session, mapping, decodeAnchorBase64(handle.startAnchorB64))
+      const end = resolveAnchor(this.session, mapping, decodeAnchorBase64(handle.endAnchorB64))
+      if (start === null || end === null) {
+        throw new Error(`Could not resolve matchId: ${matchId}`)
+      }
+      return normalizeRange(start, end)
+    })
+
+    ranges.sort((a, b) => (a.from === b.from ? b.to - a.to : b.from - a.from))
+
+    for (let i = 1; i < ranges.length; i += 1) {
+      if (ranges[i - 1]!.from < ranges[i]!.to) {
+        throw new Error('replace_matches received overlapping match ranges')
+      }
+    }
+
+    let cursorPos = ranges[ranges.length - 1]!.from
+    for (const range of ranges) {
+      cursorPos = replaceRange(this.session, this.origin, range.from, range.to, text)
+    }
+
+    this.clearSelectionInternal()
+    this.updateCursor(cursorPos)
+    this.completedMutations.push({
+      kind: 'replace_matches',
+      replacedCount: ranges.length,
+      insertedChars: text.length,
+    })
+    return { ok: true, replacedCount: ranges.length, insertedChars: text.length }
   }
 
   deleteSelection(): { ok: true; deleted: boolean } {

@@ -53,6 +53,32 @@ function stringifyData(value: unknown): string {
   }
 }
 
+function makeJsonSafe(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString()
+  if (Array.isArray(value)) return value.map((entry) => makeJsonSafe(entry))
+  if (typeof value === 'bigint') return value.toString()
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => typeof entry !== 'function')
+        .map(([key, entry]) => [key, makeJsonSafe(entry)]),
+    )
+  }
+  return value
+}
+
+function messageTextContent(message: UIMessage): string {
+  if (!Array.isArray(message.parts)) return ''
+  return message.parts
+    .flatMap((part) => {
+      if (part.type !== 'text') return []
+      if ('content' in part && typeof part.content === 'string') return [part.content]
+      if ('text' in part && typeof part.text === 'string') return [part.text]
+      return []
+    })
+    .join('')
+}
+
 function messageTimestamp(message: UIMessage, fallback: number): number {
   if (message.createdAt instanceof Date) return message.createdAt.getTime()
   if (message.createdAt) return new Date(message.createdAt as unknown as string).getTime()
@@ -179,6 +205,7 @@ export function ChatSidebar(props: {
   const [draft, setDraft] = useState('')
   const [docInsertions, setDocInsertions] = useState<DocInsertMessage[]>([])
   const [showTools, setShowTools] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -382,6 +409,54 @@ export function ChatSidebar(props: {
     )
   }, [docInsertions, messages, showTools])
 
+  const debugExportJson = useMemo(() => {
+    const transcript = renderItems.map((item) =>
+      item.kind === 'message'
+        ? {
+            kind: 'message',
+            role: item.message.role,
+            variant: item.variant,
+            id: item.message.id,
+            createdAt: messageTimestamp(item.message, item.time),
+            text: messageTextContent(item.message),
+            parts: makeJsonSafe(item.message.parts ?? []),
+          }
+        : {
+            kind: 'streaming-insertion',
+            id: item.insertion.id,
+            createdAt: item.time,
+            data: makeJsonSafe(item.insertion),
+          },
+    )
+
+    return JSON.stringify(
+      makeJsonSafe({
+        exportedAt: new Date().toISOString(),
+        docKey,
+        sessionId,
+        connectionStatus,
+        subscribed: isSubscribed,
+        busy,
+        transcript,
+        raw: {
+          messages,
+          docInsertions,
+        },
+      }),
+      null,
+      2,
+    )
+  }, [
+    busy,
+    connectionStatus,
+    docInsertions,
+    docKey,
+    isSubscribed,
+    messages,
+    renderItems,
+    sessionId,
+  ])
+
   // Auto-grow textarea
   useEffect(() => {
     const ta = textareaRef.current
@@ -411,6 +486,21 @@ export function ChatSidebar(props: {
     }).catch(() => {})
   }
 
+  const handleCopyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(debugExportJson)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+  }
+
+  useEffect(() => {
+    if (copyState === 'idle') return
+    const timer = window.setTimeout(() => setCopyState('idle'), 1800)
+    return () => window.clearTimeout(timer)
+  }, [copyState])
+
   if (!mounted) {
     return (
       <aside className="chat-sidebar">
@@ -423,14 +513,25 @@ export function ChatSidebar(props: {
     <aside className="chat-sidebar">
       <div className="chat-header">
         <h2 className="chat-heading">Chat</h2>
-        <label className="chat-tools-toggle">
-          <input
-            type="checkbox"
-            checked={showTools}
-            onChange={(event) => setShowTools(event.target.checked)}
-          />
-          <span>Show tools</span>
-        </label>
+        <div className="chat-header-actions">
+          {showTools ? (
+            <Button
+              className={`chat-copy-json-btn${copyState === 'failed' ? ' chat-copy-json-btn-failed' : ''}`}
+              onClick={handleCopyJson}
+              aria-label="Copy chat and tool data as JSON"
+            >
+              {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy JSON'}
+            </Button>
+          ) : null}
+          <label className="chat-tools-toggle">
+            <input
+              type="checkbox"
+              checked={showTools}
+              onChange={(event) => setShowTools(event.target.checked)}
+            />
+            <span>Show tools</span>
+          </label>
+        </div>
       </div>
       <div ref={viewportRef} className="chat-messages" aria-live="polite" onScroll={handleScroll}>
         {renderItems.length === 0 ? (

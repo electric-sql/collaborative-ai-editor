@@ -24,6 +24,16 @@ const searchTextDef = toolDefinition({
   }),
 })
 
+const replaceMatchesDef = toolDefinition({
+  name: 'replace_matches',
+  description:
+    'Replace multiple previously found exact matches in one step. Use this after search_text when the user wants the same exact text changed in several places, such as renaming a character throughout the document.',
+  inputSchema: z.object({
+    matchIds: z.array(z.string().min(1)).min(1).max(50),
+    text: z.string(),
+  }),
+})
+
 const placeCursorDef = toolDefinition({
   name: 'place_cursor',
   description:
@@ -125,6 +135,15 @@ export function createDocumentTools(runtime: DocumentToolRuntime) {
       ok: true,
       matches: runtime.searchText(query, maxResults),
     })),
+    replaceMatchesDef.server(async ({ matchIds, text }, context) => {
+      const result = runtime.replaceMatches(matchIds, text)
+      context?.emitCustomEvent('agent-edit-applied', {
+        kind: 'replace_matches',
+        count: result.replacedCount,
+        chars: text.length,
+      })
+      return result
+    }),
     placeCursorDef.server(async ({ matchId, edge }, context) => {
       const result = runtime.placeCursor(matchId, edge)
       context?.emitCustomEvent('agent-cursor-updated', { matchId, edge: edge ?? 'start' })

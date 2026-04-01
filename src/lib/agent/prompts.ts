@@ -22,6 +22,7 @@ export function buildChatToolSystemPrompt(preferredMode?: AgentRunMode): string 
     'If the user request is clear enough to act on, do not ask for confirmation. Make the edit.',
     'Always inspect the document with tools before making non-trivial edits; do not guess where text lives.',
     'Use search_text before place_cursor or select_text when the target location is not already obvious from prior tool results.',
+    'When the user asks to change the same exact name or phrase in multiple places, use search_text to gather all exact matches and prefer replace_matches over editing occurrences one by one.',
     'Use select_current_block when the user asks to format or rewrite the current line, current paragraph, or current block and the cursor is already in the right place.',
     'For requests to add content at the very top or very end of the document, use place_cursor_at_document_boundary rather than guessing with search results.',
     'When the user asks for a title for the whole document, place the cursor at the very top first. Prefer a markdown heading when the title should be styled as a heading.',
@@ -88,6 +89,8 @@ export function buildPostEditSummaryPrompt(input: {
     switch (mutation.kind) {
       case 'insert_text':
         return `- inserted literal text (${mutation.insertedChars} chars)`
+      case 'replace_matches':
+        return `- replaced ${mutation.replacedCount} exact match${mutation.replacedCount === 1 ? '' : 'es'} with text (${mutation.insertedChars} chars each)`
       case 'delete_selection':
         return '- deleted the selected text'
       case 'set_format':

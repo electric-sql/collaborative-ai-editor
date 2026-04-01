@@ -700,6 +700,13 @@ textarea {
   border-bottom: 1px solid var(--border);
 }
 
+.chat-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
 .chat-heading {
   font-size: 0.6875rem;
   font-weight: 600;
@@ -721,6 +728,33 @@ textarea {
 .chat-tools-toggle input {
   margin: 0;
   accent-color: var(--accent);
+}
+
+.chat-copy-json-btn {
+  height: 22px;
+  padding: 0 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.1s,
+    color 0.1s,
+    border-color 0.1s;
+}
+
+.chat-copy-json-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.chat-copy-json-btn-failed {
+  color: var(--danger);
+  border-color: rgba(220, 38, 38, 0.35);
 }
 
 .chat-loading {

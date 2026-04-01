@@ -543,6 +543,25 @@ const scenarios: Scenario[] = [
     }),
   },
   {
+    name: 'rename recurring character everywhere',
+    preferredMode: 'insert',
+    seed:
+      'At midnight, the town’s last streetlamp blinked out, and Mara heard the sea whisper her name. So when morning came, Mara opened the letter she had feared for weeks.',
+    prompt: 'Make the story about Kiki instead of Mara.',
+    validate: chainValidators(validateNoSummaryLeakInDocument, (result) => {
+      if ((result.docText.match(/\bKiki\b/g) ?? []).length < 2) {
+        return 'Expected all repeated Mara mentions to be replaced with Kiki.'
+      }
+      if (/\bMara\b/.test(result.docText)) {
+        return 'Expected no Mara mentions to remain in the document.'
+      }
+      if (!result.toolCalls.includes('replace_matches')) {
+        return 'Expected replace_matches to be used for repeated exact-name replacement.'
+      }
+      return null
+    }),
+  },
+  {
     name: 'replace second beta only',
     preferredMode: 'rewrite',
     seed: 'beta one beta two',

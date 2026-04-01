@@ -51,6 +51,23 @@ describe('DocumentToolRuntime unit tests', () => {
     runtime.destroy()
   })
 
+  it('replaces multiple exact matches in one operation', () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+
+    runtime.insertText('Mara waved. Mara smiled.')
+    const matches = runtime.searchText('Mara', 10)
+    const result = runtime.replaceMatches(
+      matches.map((match) => match.matchId),
+      'Kiki',
+    )
+
+    expect(result).toEqual({ ok: true, replacedCount: 2, insertedChars: 4 })
+    expect(readDocText(session)).toBe('Kiki waved. Kiki smiled.')
+
+    runtime.destroy()
+  })
+
   it('streams insert-mode text progressively into the document', async () => {
     const session = createTestSession()
     const runtime = DocumentToolRuntime.createForSession({ session })

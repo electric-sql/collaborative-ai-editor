@@ -15,6 +15,7 @@ describe('document tool unit tests', () => {
     expect(names).toEqual([
       'get_document_snapshot',
       'search_text',
+      'replace_matches',
       'place_cursor',
       'place_cursor_at_document_boundary',
       'select_text',
@@ -143,6 +144,32 @@ describe('document tool unit tests', () => {
     expect(events.filter((event) => event.name === 'agent-edit-applied')).toEqual([
       { name: 'agent-edit-applied', value: { kind: 'insert_text', chars: 10 } },
       { name: 'agent-edit-applied', value: { kind: 'delete_selection' } },
+    ])
+
+    runtime.destroy()
+  })
+
+  it('runs replace_matches across repeated exact search hits', async () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+    const tools = createToolMap(runtime)
+    const { context, events } = createEventCollector()
+
+    await tools.get('insert_text')!.execute?.({ text: 'Mara waved. Mara smiled.' }, context)
+    const search = (await tools.get('search_text')!.execute?.({ query: 'Mara', maxResults: 10 })) as {
+      ok: true
+      matches: Array<{ matchId: string }>
+    }
+    const result = await tools.get('replace_matches')!.execute?.(
+      { matchIds: search.matches.map((match) => match.matchId), text: 'Kiki' },
+      context,
+    )
+
+    expect(result).toEqual({ ok: true, replacedCount: 2, insertedChars: 4 })
+    expect(readDocText(session)).toBe('Kiki waved. Kiki smiled.')
+    expect(events.filter((event) => event.name === 'agent-edit-applied')).toEqual([
+      { name: 'agent-edit-applied', value: { kind: 'insert_text', chars: 24 } },
+      { name: 'agent-edit-applied', value: { kind: 'replace_matches', count: 2, chars: 4 } },
     ])
 
     runtime.destroy()
