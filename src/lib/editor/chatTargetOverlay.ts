@@ -1,5 +1,5 @@
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view'
-import { Plugin, PluginKey } from 'prosemirror-state'
+import { Plugin, PluginKey, TextSelection } from 'prosemirror-state'
 import type { Node as PMNode } from 'prosemirror-model'
 import { initProseMirrorDoc } from 'y-prosemirror'
 import type * as Y from 'yjs'
@@ -23,8 +23,21 @@ function clampDecorationPos(doc: PMNode, pos: number): number {
   return Math.max(0, Math.min(pos, doc.content.size))
 }
 
+function normalizeCursorDecorationPos(doc: PMNode, pos: number): number {
+  const clamped = clampDecorationPos(doc, pos)
+  const start = TextSelection.atStart(doc).from
+  const end = TextSelection.atEnd(doc).from
+  if (clamped <= start) return start
+  if (clamped >= end) return end
+  try {
+    return TextSelection.near(doc.resolve(clamped), 1).from
+  } catch {
+    return start
+  }
+}
+
 function buildCursorDecoration(doc: PMNode, pos: number): Decoration {
-  return Decoration.widget(clampDecorationPos(doc, pos), () => {
+  return Decoration.widget(normalizeCursorDecorationPos(doc, pos), () => {
     const span = document.createElement('span')
     span.className = 'chat-target-cursor'
     span.setAttribute('aria-hidden', 'true')

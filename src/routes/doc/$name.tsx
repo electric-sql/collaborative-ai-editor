@@ -277,6 +277,7 @@ function DocumentPage() {
                 onEditorContextChange={setEditorContext}
                 showChatTargetOverlay={chatComposerFocused}
                 chatTargetContext={editorContext}
+                holdChatTarget={chatComposerFocused}
                 onActiveStateChange={setActiveState}
                 onAwarenessChange={(aw, id) => {
                   setAwareness(aw)

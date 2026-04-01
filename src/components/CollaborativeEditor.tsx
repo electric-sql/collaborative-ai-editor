@@ -5,6 +5,7 @@ import {
   useEditorEffect,
   useEditorState,
 } from '@handlewithcare/react-prosemirror'
+import { TextSelection } from 'prosemirror-state'
 import { toggleMark, setBlockType } from 'prosemirror-commands'
 import { wrapInList, liftListItem, sinkListItem } from 'prosemirror-schema-list'
 import type { EditorView } from 'prosemirror-view'
@@ -14,7 +15,10 @@ import { createHumanEditorState } from '../lib/editor/createHumanEditor'
 import { setChatTargetOverlay } from '../lib/editor/chatTargetOverlay'
 import { schema } from '../lib/editor/schema'
 import { createRoomProvider } from '../lib/yjs/createRoomProvider'
-import { encodeAnchorBase64, type ProsemirrorMapping } from '../lib/agent/relativeAnchors'
+import {
+  encodeAnchorBase64,
+  type ProsemirrorMapping,
+} from '../lib/agent/relativeAnchors'
 import type { EditorContextPayload } from '../lib/agent/editorContext'
 
 function pickColor(seed: string): string {
@@ -84,10 +88,13 @@ function ChatTargetOverlaySync(props: {
   editorContext: EditorContextPayload | null
 }) {
   useEditorEffect((view) => {
-    setChatTargetOverlay(view, {
-      active: props.active,
-      context: props.editorContext,
-    })
+    const timeoutId = window.setTimeout(() => {
+      setChatTargetOverlay(view, {
+        active: props.active,
+        context: props.editorContext,
+      })
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [props.active, props.editorContext])
   return null
 }
@@ -150,6 +157,7 @@ function ActiveStateWatcher({ onChange }: { onChange: (state: EditorActiveState)
 
 function SelectionContextWatcher(props: {
   fragment: import('yjs').XmlFragment
+  enabled: boolean
   onChange: (context: EditorContextPayload | null) => void
 }) {
   const editorState = useEditorState()
@@ -158,6 +166,7 @@ function SelectionContextWatcher(props: {
   onChangeRef.current = props.onChange
 
   useEffect(() => {
+    if (!props.enabled) return
     if (!editorState) return
     const { meta } = initProseMirrorDoc(props.fragment, schema)
     const mapping = meta.mapping as ProsemirrorMapping
@@ -172,9 +181,23 @@ function SelectionContextWatcher(props: {
       prevRef.current = key
       onChangeRef.current(next)
     }
-  }, [editorState, props.fragment])
+  }, [editorState, props.enabled, props.fragment])
 
   return null
+}
+
+function isDocumentEffectivelyEmpty(fragment: import('yjs').XmlFragment): boolean {
+  const { doc } = initProseMirrorDoc(fragment, schema)
+  return doc.textBetween(0, doc.content.size, '\n\n', '\n').trim().length === 0
+}
+
+function buildStartCursorContext(fragment: import('yjs').XmlFragment): EditorContextPayload {
+  const { doc, meta } = initProseMirrorDoc(fragment, schema)
+  const mapping = meta.mapping as ProsemirrorMapping
+  return {
+    kind: 'cursor',
+    anchor: encodeAnchorBase64(fragment, mapping, TextSelection.atStart(doc).from),
+  }
 }
 
 export function CollaborativeEditor(props: {
@@ -187,6 +210,7 @@ export function CollaborativeEditor(props: {
   onEditorContextChange?: (context: EditorContextPayload | null) => void
   showChatTargetOverlay?: boolean
   chatTargetContext?: EditorContextPayload | null
+  holdChatTarget?: boolean
 }) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -208,6 +232,7 @@ function CollaborativeEditorInner({
   onEditorContextChange,
   showChatTargetOverlay,
   chatTargetContext,
+  holdChatTarget,
 }: {
   docKey: string
   localUserName: string
@@ -218,9 +243,16 @@ function CollaborativeEditorInner({
   onEditorContextChange?: (context: EditorContextPayload | null) => void
   showChatTargetOverlay?: boolean
   chatTargetContext?: EditorContextPayload | null
+  holdChatTarget?: boolean
 }) {
   const [room, setRoom] = useState<ReturnType<typeof createRoomProvider> | null>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const targetContextRef = useRef<EditorContextPayload | null>(chatTargetContext ?? null)
+  const pendingBootstrapCursorRef = useRef(false)
+
+  useEffect(() => {
+    targetContextRef.current = chatTargetContext ?? null
+  }, [chatTargetContext])
 
   useEffect(() => {
     const nextRoom = createRoomProvider({
@@ -250,6 +282,36 @@ function CollaborativeEditorInner({
       onEditorContextChange?.(null)
     }
   }, [room, onEditorContextChange])
+
+  useEffect(() => {
+    if (holdChatTarget) {
+      pendingBootstrapCursorRef.current =
+        chatTargetContext?.kind === 'cursor' && !!room && isDocumentEffectivelyEmpty(room.fragment)
+      return
+    }
+
+    pendingBootstrapCursorRef.current = false
+  }, [chatTargetContext, holdChatTarget, room])
+
+  useEffect(() => {
+    if (!room || !holdChatTarget || !pendingBootstrapCursorRef.current || !onEditorContextChange) {
+      return
+    }
+
+    const handleAfterTransaction = () => {
+      if (!pendingBootstrapCursorRef.current) return
+      if (isDocumentEffectivelyEmpty(room.fragment)) return
+      pendingBootstrapCursorRef.current = false
+      const nextContext = buildStartCursorContext(room.fragment)
+      targetContextRef.current = nextContext
+      onEditorContextChange(nextContext)
+    }
+
+    room.ydoc.on('afterTransaction', handleAfterTransaction)
+    return () => {
+      room.ydoc.off('afterTransaction', handleAfterTransaction)
+    }
+  }, [holdChatTarget, onEditorContextChange, room])
 
   useEffect(() => {
     if (!room || !onConnectionStateChange) return
@@ -381,7 +443,11 @@ function CollaborativeEditorInner({
         />
         {onActiveStateChange && <ActiveStateWatcher onChange={onActiveStateChange} />}
         {onEditorContextChange && (
-          <SelectionContextWatcher fragment={room.fragment} onChange={onEditorContextChange} />
+          <SelectionContextWatcher
+            fragment={room.fragment}
+            enabled={true}
+            onChange={onEditorContextChange}
+          />
         )}
         <div className="editor-surface-wrap">
           <ProseMirrorDoc className="editor-surface" />
