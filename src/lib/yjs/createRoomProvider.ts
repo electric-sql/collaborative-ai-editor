@@ -15,32 +15,11 @@ export interface CreateRoomProviderOptions {
   localUserColor: string
 }
 
-export function createRoomProvider(options: CreateRoomProviderOptions): {
-  ydoc: Y.Doc
-  awareness: Awareness
-  provider: YjsProvider
-  fragment: Y.XmlFragment
-} {
-  const ydoc = new Y.Doc()
-  const awareness = new Awareness(ydoc)
-  awareness.setLocalState({
-    user: {
-      name: options.localUserName,
-      color: options.localUserColor,
-    },
-  })
-
-  const baseUrl = appYjsProxyBaseUrl()
-  const docId = docCollaborationDocId(options.docKey)
-
-  const provider = new YjsProvider({
-    doc: ydoc,
-    baseUrl,
-    docId,
-    awareness,
-    connect: false,
-  })
-
+export function applyYjsProviderProxyCompat(
+  provider: YjsProvider,
+  baseUrl: string,
+  docId: string,
+): void {
   const providerDebug = provider as any
   const previewBytes = (data: Uint8Array) =>
     Array.from(data.slice(0, 24))
@@ -58,6 +37,7 @@ export function createRoomProvider(options: CreateRoomProviderOptions): {
     value === 0x0d
   const providerHeaders = providerDebug.headers as Record<string, string> | undefined
   const providerDocUrl = `${baseUrl}/docs/${docId}`
+
   if (typeof providerDebug.docUrl === 'function') {
     providerDebug.docUrl = () => providerDocUrl
   }
@@ -128,6 +108,34 @@ export function createRoomProvider(options: CreateRoomProviderOptions): {
       }
     }
   }
+}
+
+export function createRoomProvider(options: CreateRoomProviderOptions): {
+  ydoc: Y.Doc
+  awareness: Awareness
+  provider: YjsProvider
+  fragment: Y.XmlFragment
+} {
+  const ydoc = new Y.Doc()
+  const awareness = new Awareness(ydoc)
+  awareness.setLocalState({
+    user: {
+      name: options.localUserName,
+      color: options.localUserColor,
+    },
+  })
+
+  const baseUrl = appYjsProxyBaseUrl()
+  const docId = docCollaborationDocId(options.docKey)
+
+  const provider = new YjsProvider({
+    doc: ydoc,
+    baseUrl,
+    docId,
+    awareness,
+    connect: false,
+  })
+  applyYjsProviderProxyCompat(provider, baseUrl, docId)
 
   provider.on('error', (err) => {
     console.error('[yjs-provider] error', err)

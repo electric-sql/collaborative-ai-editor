@@ -90,14 +90,14 @@ The app uses the Yjs base URL:
 ## Prerequisites
 
 - Node.js 20+
-- npm 10+
+- pnpm 10+
 
 ## Setup
 
 1. Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 2. Create `.env` in the repo root:
@@ -120,7 +120,7 @@ PUBLIC_APP_BASE_URL=http://localhost:3000
 Start the app, Durable Streams server, and Yjs server together:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 Open:
@@ -131,17 +131,18 @@ On first load, enter a document name to create/join a room.
 
 ## Development scripts
 
-- `npm run dev` - run app + servers together
-- `npm run dev:app` - run app only
-- `npm run dev:ds` - run Durable Streams + Yjs servers only
-- `npm run test:unit` - deterministic unit tests
-- `npm run test:evals` - live model-backed evals
-- `npm run typecheck` - TypeScript checks
-- `npm run build` - production build
-- `npm run preview` - preview production output
-- `npm run preview:cloudflare` - build and preview the Cloudflare Worker locally with Wrangler
-- `npm run deploy:cloudflare` - build and deploy the app to Cloudflare Workers
-- `npm run cf:typegen` - generate Wrangler types if you add Cloudflare bindings later
+- `pnpm dev` - run app + servers together
+- `pnpm dev:app` - run app only
+- `pnpm dev:ds` - run Durable Streams + Yjs servers only
+- `pnpm test:unit` - deterministic unit tests
+- `pnpm test:evals` - live model-backed evals
+- `pnpm typecheck` - TypeScript checks
+- `pnpm build` - production build
+- `pnpm preview` - build and preview the Cloudflare Worker locally with Wrangler
+- `pnpm preview:vite` - preview the raw Vite output
+- `pnpm preview:cloudflare` - build and preview the Cloudflare Worker locally with Wrangler
+- `pnpm deploy:cloudflare` - build and deploy the app to Cloudflare Workers
+- `pnpm cf:typegen` - generate Wrangler types if you add Cloudflare bindings later
 
 ## Deploy to Cloudflare Workers
 
@@ -179,6 +180,12 @@ Set these in the Cloudflare dashboard or with Wrangler:
 - `DURABLE_STREAMS_YJS_BASE_URL=<hosted yjs upstream>`
 - `DURABLE_STREAMS_CHAT_BASE_URL=<hosted chat upstream>`
 
+For the Durable Streams values, this app supports either format:
+
+- a plain origin such as `https://api.electric-sql.cloud`
+- a full service URL such as `https://api.electric-sql.cloud/v1/yjs/<service-id>` or
+  `https://api.electric-sql.cloud/v1/stream/<service-id>`
+
 Set these as secrets if you use them:
 
 - `OPENAI_API_KEY`
@@ -193,7 +200,7 @@ Set these as secrets if you use them:
 4. Run:
 
 ```bash
-npm run preview:cloudflare
+pnpm preview:cloudflare
 ```
 
 ### Production deploy
@@ -201,13 +208,13 @@ npm run preview:cloudflare
 1. Authenticate Wrangler:
 
 ```bash
-npx wrangler login
+pnpm exec wrangler login
 ```
 
 2. Build and deploy:
 
 ```bash
-npm run deploy:cloudflare
+pnpm deploy:cloudflare
 ```
 
 3. In the Cloudflare dashboard, add the custom domain:
@@ -236,7 +243,7 @@ Use a custom domain because the Worker is the application origin.
 
 ### `Durable Streams Yjs: connecting — synced: no`
 
-- Make sure `npm run dev` is running.
+- Make sure `pnpm dev` is running.
 - Confirm ports are listening:
   - `127.0.0.1:4437` (Durable Streams)
   - `127.0.0.1:4438` (Yjs server)
@@ -247,14 +254,14 @@ Use a custom domain because the Worker is the application origin.
 ### Chat works but AI generation fails
 
 - Verify `OPENAI_API_KEY` exists in `.env`.
-- Restart `npm run dev` after changing env vars.
+- Restart `pnpm dev` after changing env vars.
 - Check `/api/chat` response body for server error text.
 
 ### Live evals fail unexpectedly
 
 - Verify `OPENAI_API_KEY` and `OPENAI_MODEL` in `.env`.
 - Start with `gpt-5.4`, which is the current baseline used in this repo.
-- Re-run `npm run test:evals`.
+- Re-run `pnpm test:evals`.
 
 ### Chat stream 404 on first load
 

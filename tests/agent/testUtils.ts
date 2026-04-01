@@ -32,7 +32,7 @@ export function createTestSession(sessionId: string = crypto.randomUUID()): Serv
     setTail: () => undefined,
     setCursorFromAbsolute: () => undefined,
     clearCursor: () => undefined,
-    destroy: () => {
+    destroy: async () => {
       awareness.destroy()
       ydoc.destroy()
     },

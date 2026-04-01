@@ -6,9 +6,22 @@
     "nodejs_compat",
     "nodejs_compat_populate_process_env"
   ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
   "vars": {
-    "APP_BASE_URL": "https://collaborative-ai-editor.examples.electric-sql.com",
-    "PUBLIC_APP_BASE_URL": "https://collaborative-ai-editor.examples.electric-sql.com",
-    "OPENAI_MODEL": "gpt-5.4"
+    "APP_BASE_URL": "https://collaborative-ai-editor.vaxine.workers.dev",
+    "PUBLIC_APP_BASE_URL": "https://collaborative-ai-editor.vaxine.workers.dev",
+    "OPENAI_MODEL": "gpt-5.4",
+    "DURABLE_STREAMS_YJS_BASE_URL": "https://api.electric-sql.cloud/v1/yjs/svc-yjs-amazing-bird-3nci0894vt",
+    "DURABLE_STREAMS_CHAT_BASE_URL": "https://api.electric-sql.cloud/v1/stream/svc-symbolic-urial-k0drhgga4y"
+  },
+  "secrets": {
+    "required": [
+      "OPENAI_API_KEY",
+      "DURABLE_STREAMS_YJS_SECRET",
+      "DURABLE_STREAMS_CHAT_SECRET"
+    ]
   }
 }

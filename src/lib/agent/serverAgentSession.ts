@@ -2,8 +2,11 @@ import { YjsProvider } from '@durable-streams/y-durable-streams'
 import { Doc, type XmlFragment, relativePositionToJSON } from 'yjs'
 import { Awareness } from 'y-protocols/awareness'
 import {
-  getAppOriginServer,
+  durableStreamsYjsBaseUrl,
   docCollaborationDocId,
+  getYjsDurableStreamsHeadersServer,
+  getYjsDurableStreamsOriginServer,
+  getYjsDurableStreamsSecretServer,
 } from '../yjs/streamIds'
 import { Y_XML_FRAGMENT_KEY } from '../yjs/createRoomProvider'
 import { absolutePositionToRelativePosition } from 'y-prosemirror'
@@ -17,6 +20,28 @@ export function createAgentTransactionOrigin(sessionId: string): AgentTransactio
   return { source: 'agent', sessionId }
 }
 
+function waitForProviderSync(provider: YjsProvider, timeoutMs: number): Promise<void> {
+  if (provider.synced) {
+    return Promise.resolve()
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      provider.off('synced', onSync)
+      reject(new Error(`Timed out after ${timeoutMs}ms waiting for provider re-sync`))
+    }, timeoutMs)
+
+    const onSync = (synced: boolean) => {
+      if (!synced) return
+      clearTimeout(timeout)
+      provider.off('synced', onSync)
+      resolve()
+    }
+
+    provider.on('synced', onSync)
+  })
+}
+
 export interface ServerAgentSession {
   ydoc: Doc
   awareness: Awareness
@@ -28,12 +53,13 @@ export interface ServerAgentSession {
   setTail: (tail: string | null) => void
   setCursorFromAbsolute: (absPos: number, mapping: ProsemirrorMapping) => void
   clearCursor: () => void
-  destroy: () => void
+  destroy: () => Promise<void>
 }
 
 export function createServerAgentSession(docKey: string, sessionId: string): ServerAgentSession {
   const ydoc = new Doc()
   const awareness = new Awareness(ydoc)
+  const logPrefix = `[server-agent-yjs:${docKey}:${sessionId}]`
 
   const setUserFields = (status: AgentAwarenessStatus) => {
     const prev = awareness.getLocalState() ?? {}
@@ -52,15 +78,47 @@ export function createServerAgentSession(docKey: string, sessionId: string): Ser
 
   setUserFields('idle')
 
-  const baseUrl = `${getAppOriginServer()}/api/yjs`
+  const baseUrl = durableStreamsYjsBaseUrl(getYjsDurableStreamsOriginServer())
   const docId = docCollaborationDocId(docKey)
+  const headers = getYjsDurableStreamsHeadersServer()
+  const secret = getYjsDurableStreamsSecretServer()
 
   const provider = new YjsProvider({
     doc: ydoc,
     baseUrl,
     docId,
     awareness,
+    ...(headers ? { headers } : {}),
+    connect: false,
   })
+  const providerDebug = provider as any
+  const directDocUrl = (() => {
+    const url = new URL(`${baseUrl}/docs/${docId}`)
+    if (secret) {
+      url.searchParams.set('secret', secret)
+    }
+    return url.toString()
+  })()
+  if (typeof providerDebug.docUrl === 'function') {
+    providerDebug.docUrl = () => directDocUrl
+  }
+  if (typeof providerDebug.awarenessUrl === 'function') {
+    providerDebug.awarenessUrl = (name: string = 'default') => {
+      const url = new URL(directDocUrl)
+      url.searchParams.set('awareness', name)
+      return url.toString()
+    }
+  }
+  provider.on('status', (status) => {
+    console.info(logPrefix, 'status', status)
+  })
+  provider.on('synced', (synced) => {
+    console.info(logPrefix, 'synced', synced)
+  })
+  provider.on('error', (err) => {
+    console.error(logPrefix, 'provider error', err)
+  })
+  void provider.connect()
 
   const fragment = ydoc.getXmlFragment(Y_XML_FRAGMENT_KEY)
 
@@ -103,9 +161,29 @@ export function createServerAgentSession(docKey: string, sessionId: string): Ser
     }
   }
 
-  const destroy = () => {
+  const destroy = async () => {
     try {
-      provider.destroy()
+      console.info(logPrefix, 'destroy start', {
+        connected: provider.connected,
+        synced: provider.synced,
+      })
+      await provider.flush().catch((error) => {
+        console.warn(logPrefix, 'flush failed', error)
+      })
+      if (provider.connected && !provider.synced) {
+        try {
+          await waitForProviderSync(provider, 5_000)
+        } catch (error) {
+          console.warn(logPrefix, 'provider did not re-sync before disconnect', {
+            error: error instanceof Error ? error.message : String(error),
+            connected: provider.connected,
+            synced: provider.synced,
+          })
+        }
+      }
+      await provider.disconnect().catch((error) => {
+        console.warn(logPrefix, 'disconnect failed', error)
+      })
     } finally {
       awareness.destroy()
       ydoc.destroy()

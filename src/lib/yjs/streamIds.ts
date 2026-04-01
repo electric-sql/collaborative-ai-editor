@@ -11,6 +11,8 @@ const YJS_DOC_ROOT = 'rooms'
 const CHAT_ROOT = 'chats'
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {}
 const DOC_LAYOUT_VERSION = 'v3'
+const YJS_SERVICE_PATH_RE = /\/v1\/yjs\/[^/]+$/
+const CHAT_SERVICE_PATH_RE = /\/v1\/stream\/[^/]+$/
 
 function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
   for (const value of values) {
@@ -74,9 +76,19 @@ export function chatSessionStreamPath(docKey: string, sessionId: string = 'defau
   return `${CHAT_ROOT}/${sanitizeDocKey(docKey)}/chat/${sanitizeSessionId(sessionId)}`
 }
 
-/** Full HTTP URL for a raw durable stream (`/v1/stream/...`) on the Durable Streams server. */
-export function durableStreamResourceUrl(origin: string, streamPath: string): string {
-  return `${origin.replace(/\/$/, '')}/v1/stream/${streamPath}`
+/**
+ * Full HTTP URL for a raw durable stream.
+ *
+ * Accepts either:
+ * - a server origin, e.g. `https://api.example.com`
+ * - a full stream service URL, e.g. `https://api.example.com/v1/stream/svc-123`
+ */
+export function durableStreamResourceUrl(originOrServiceUrl: string, streamPath: string): string {
+  const base = originOrServiceUrl.replace(/\/$/, '')
+  if (CHAT_SERVICE_PATH_RE.test(base)) {
+    return `${base}/${streamPath}`
+  }
+  return `${base}/v1/stream/${streamPath}`
 }
 
 /** Server-side origin for the Yjs Durable Streams service. */
@@ -89,9 +101,19 @@ export function getYjsDurableStreamsOriginServer(): string {
   ).replace(/\/$/, '')
 }
 
-/** Full Yjs HTTP base URL including service segment. */
-export function durableStreamsYjsBaseUrl(origin: string): string {
-  return `${origin.replace(/\/$/, '')}/v1/yjs/${YJS_SERVICE_NAME}`
+/**
+ * Full Yjs HTTP base URL including service segment.
+ *
+ * Accepts either:
+ * - a server origin, e.g. `https://api.example.com`
+ * - a full Yjs service URL, e.g. `https://api.example.com/v1/yjs/svc-123`
+ */
+export function durableStreamsYjsBaseUrl(originOrServiceUrl: string): string {
+  const base = originOrServiceUrl.replace(/\/$/, '')
+  if (YJS_SERVICE_PATH_RE.test(base)) {
+    return base
+  }
+  return `${base}/v1/yjs/${YJS_SERVICE_NAME}`
 }
 
 export function appYjsProxyBaseUrl(): string {

@@ -944,10 +944,10 @@ export class DocumentToolRuntime {
     return result
   }
 
-  destroy(): void {
+  async destroy(): Promise<void> {
     this.session.clearCursor()
     this.session.setTail(null)
     this.session.setStatus('idle')
-    this.session.destroy()
+    await this.session.destroy()
   }
 }

@@ -341,7 +341,7 @@ export function ChatSidebar(props: {
                   <MessagePartView message={item.message} />
                 </li>
               ) : (
-                <li key={item.key} className="chat-msg chat-msg-assistant chat-msg-assistant-meta chat-msg-insertion">
+                <li key={item.key} className="chat-msg chat-msg-assistant chat-msg-assistant-meta">
                   <span className="chat-role">Electra</span>
                   <details className="chat-disclosure chat-insert">
                     <summary className="chat-disclosure__summary">

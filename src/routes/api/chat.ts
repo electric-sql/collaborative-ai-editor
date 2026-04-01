@@ -3,6 +3,7 @@ import { chat, type StreamChunk } from '@tanstack/ai'
 import { openaiText } from '@tanstack/ai-openai'
 import {
   toDurableChatSessionResponse,
+  type WaitUntil,
 } from '@durable-streams/tanstack-ai-transport'
 import type { DurableSessionMessage } from '@durable-streams/tanstack-ai-transport'
 import { attachAgentRunController, releaseAgentRunAbort } from '../../lib/agent/agentRunCancellation'
@@ -29,6 +30,30 @@ function latestUserMessage(messages: DurableSessionMessage[]): DurableSessionMes
     }
   }
   return null
+}
+
+function resolveWaitUntil(
+  request: Request,
+  context: { waitUntil?: WaitUntil } | undefined,
+): WaitUntil | undefined {
+  if (typeof context?.waitUntil === 'function') {
+    return context.waitUntil
+  }
+
+  const requestWithContext = request as Request & {
+    context?: { waitUntil?: WaitUntil }
+    waitUntil?: WaitUntil
+  }
+
+  if (typeof requestWithContext.waitUntil === 'function') {
+    return requestWithContext.waitUntil
+  }
+
+  if (typeof requestWithContext.context?.waitUntil === 'function') {
+    return requestWithContext.context.waitUntil
+  }
+
+  return undefined
 }
 
 async function* agentResponseStream(input: {
@@ -84,7 +109,7 @@ async function* agentResponseStream(input: {
         runtime.stopStreamingEdit(abortController.signal.aborted)
       }
     } finally {
-      runtime?.destroy()
+        await runtime?.destroy()
       releaseAgentRunAbort(input.sessionId)
     }
   }
@@ -95,8 +120,10 @@ export const Route = createFileRoute('/api/chat')({
     handlers: {
       POST: async ({
         request,
+        context,
       }: {
         request: Request
+        context?: { waitUntil?: WaitUntil }
       }) => {
         const url = new URL(request.url)
         const docKey = url.searchParams.get('docKey')
@@ -120,6 +147,7 @@ export const Route = createFileRoute('/api/chat')({
 
         const latestUser = latestUserMessage(messages)
         const newMessages = latestUser ? [latestUser] : []
+        const waitUntil = resolveWaitUntil(request, context)
 
         return toDurableChatSessionResponse({
           stream: {
@@ -135,6 +163,7 @@ export const Route = createFileRoute('/api/chat')({
             messages,
             runAgent,
           }),
+          waitUntil,
         })
       },
     },

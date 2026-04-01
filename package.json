@@ -2,18 +2,26 @@
   "name": "y-llm",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.15.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ]
+  },
   "imports": {
     "#/*": "./src/*"
   },
   "scripts": {
     "dev:ds": "tsx src/dev/durableStreamsServer.ts",
     "dev:app": "vite dev --port 3000",
-    "dev": "concurrently -k -n ds,app -c blue,green \"npm run dev:ds\" \"npm run dev:app\"",
+    "dev": "concurrently -k -n ds,app -c blue,green \"pnpm run dev:ds\" \"pnpm run dev:app\"",
     "build": "vite build",
-    "preview": "vite preview",
-    "preview:cloudflare": "npm run build && npx wrangler dev --config .output/server/wrangler.json",
-    "deploy:cloudflare": "npm run build && npx wrangler deploy --config .output/server/wrangler.json",
-    "cf:typegen": "npx wrangler types",
+    "preview": "pnpm run preview:cloudflare",
+    "preview:vite": "vite preview",
+    "preview:cloudflare": "pnpm run build && pnpm exec wrangler dev --config .output/server/wrangler.json",
+    "deploy:cloudflare": "pnpm run build && pnpm exec wrangler deploy --config .output/server/wrangler.json",
+    "cf:typegen": "pnpm exec wrangler types",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run tests/agent",
     "test:evals": "node --env-file=.env --import tsx tests/evals/liveAgentModelEvals.ts"

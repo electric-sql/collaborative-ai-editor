@@ -354,6 +354,6 @@ export async function runServerAgentSession(input: RunAgentInput): Promise<RunAg
   } finally {
     session.clearCursor()
     session.setTail(null)
-    session.destroy()
+    await session.destroy()
   }
 }
