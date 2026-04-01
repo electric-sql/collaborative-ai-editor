@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { sanitizeSessionId } from '../../../lib/yjs/streamIds'
+import { sanitizeDocKey, sanitizeSessionId } from '../../../lib/yjs/streamIds'
 import { abortAgentRun } from '../../../lib/agent/agentRunCancellation'
 
 export const Route = createFileRoute('/api/agent/stop')({
@@ -16,16 +16,18 @@ export const Route = createFileRoute('/api/agent/stop')({
           return Response.json({ error: 'Expected JSON object' }, { status: 400 })
         }
         const o = body as Record<string, unknown>
+        const docKey = typeof o.docKey === 'string' ? o.docKey : null
         const sessionId = typeof o.sessionId === 'string' ? o.sessionId : null
-        if (!sessionId) {
-          return Response.json({ error: 'sessionId is required' }, { status: 400 })
+        if (!docKey || !sessionId) {
+          return Response.json({ error: 'docKey and sessionId are required' }, { status: 400 })
         }
         try {
+          sanitizeDocKey(docKey)
           sanitizeSessionId(sessionId)
         } catch (e) {
           return Response.json({ error: e instanceof Error ? e.message : 'Invalid id' }, { status: 400 })
         }
-        const aborted = abortAgentRun(sessionId)
+        const aborted = abortAgentRun(docKey, sessionId)
         return Response.json({ ok: true, aborted }, {
           status: 200,
           headers: { 'Cache-Control': 'no-store' },

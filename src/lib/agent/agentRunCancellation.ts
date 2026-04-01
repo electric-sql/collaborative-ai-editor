@@ -1,26 +1,40 @@
-/** One active agent run per session id; new runs abort the previous controller. */
+/** One active agent run per document/session pair. */
 
 const controllers = new Map<string, AbortController>()
 
-export function attachAgentRunController(sessionId: string): AbortController {
-  controllers.get(sessionId)?.abort()
+function agentRunKey(docKey: string, sessionId: string): string {
+  return `${docKey}\u0000${sessionId}`
+}
+
+export function attachAgentRunController(docKey: string, sessionId: string): AbortController {
+  const key = agentRunKey(docKey, sessionId)
+  controllers.get(key)?.abort()
   const next = new AbortController()
-  controllers.set(sessionId, next)
+  controllers.set(key, next)
   return next
 }
 
-export function attachAgentRunAbort(sessionId: string): AbortSignal {
-  return attachAgentRunController(sessionId).signal
+export function attachAgentRunAbort(docKey: string, sessionId: string): AbortSignal {
+  return attachAgentRunController(docKey, sessionId).signal
 }
 
-export function releaseAgentRunAbort(sessionId: string): void {
-  controllers.delete(sessionId)
+export function releaseAgentRunAbort(
+  docKey: string,
+  sessionId: string,
+  controller?: AbortController,
+): void {
+  const key = agentRunKey(docKey, sessionId)
+  const current = controllers.get(key)
+  if (!current) return
+  if (controller && current !== controller) return
+  controllers.delete(key)
 }
 
-export function abortAgentRun(sessionId: string): boolean {
-  const c = controllers.get(sessionId)
+export function abortAgentRun(docKey: string, sessionId: string): boolean {
+  const key = agentRunKey(docKey, sessionId)
+  const c = controllers.get(key)
   if (!c) return false
   c.abort()
-  controllers.delete(sessionId)
+  controllers.delete(key)
   return true
 }

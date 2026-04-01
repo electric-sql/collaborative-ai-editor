@@ -496,7 +496,7 @@ export function ChatSidebar(props: {
     void fetch('/api/agent/stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify({ docKey, sessionId }),
     }).catch(() => {})
   }
 

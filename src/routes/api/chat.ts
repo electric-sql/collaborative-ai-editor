@@ -98,7 +98,7 @@ async function* agentResponseStream(input: {
 }): AsyncIterable<StreamChunk> {
   if (!input.runAgent) return
 
-  const abortController = attachAgentRunController(input.sessionId)
+  const abortController = attachAgentRunController(input.docKey, input.sessionId)
   let runtime: DocumentToolRuntime | null = null
   let pendingPostEditSummary = false
   let observedMutationCount = 0
@@ -176,7 +176,7 @@ async function* agentResponseStream(input: {
       }
     } finally {
         await runtime?.destroy()
-      releaseAgentRunAbort(input.sessionId)
+      releaseAgentRunAbort(input.docKey, input.sessionId, abortController)
     }
   }
 }

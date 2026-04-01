@@ -167,6 +167,11 @@ export function createServerAgentSession(docKey: string, sessionId: string): Ser
         connected: provider.connected,
         synced: provider.synced,
       })
+      try {
+        awareness.setLocalState(null)
+      } catch (error) {
+        console.warn(logPrefix, 'failed to clear awareness state before disconnect', error)
+      }
       await provider.flush().catch((error) => {
         console.warn(logPrefix, 'flush failed', error)
       })
