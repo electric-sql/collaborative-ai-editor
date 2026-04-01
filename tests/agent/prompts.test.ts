@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAgentSystemPrompt,
+  buildEditorContextSystemPrompt,
   buildAgentUserPromptTemplate,
   buildChatToolSystemPrompt,
   buildDeterministicReply,
@@ -25,6 +26,8 @@ describe('prompt unit tests', () => {
     expect(defaultPrompt).toContain('must perform that work in the document with tools')
     expect(defaultPrompt).toContain('write me a short story')
     expect(defaultPrompt).toContain('Only call start_streaming_edit')
+    expect(defaultPrompt).toContain('current user cursor or selection may already be preloaded')
+    expect(defaultPrompt).toContain('Use get_selection_snapshot to inspect the current selection')
     expect(defaultPrompt).toContain('follow up with one short chat sentence describing what you actually changed')
     expect(defaultPrompt).toContain('If a tool call did not change the document, do not claim that it did')
     expect(defaultPrompt).toContain('For formatting existing words or phrases, prefer selecting the exact text and using set_format')
@@ -64,6 +67,22 @@ describe('prompt unit tests', () => {
     expect(reply).toContain('[Electra · rewrite]')
     expect(reply).toContain('deterministic streamed reply')
     expect(reply).toContain('Polish this paragraph')
+  })
+
+  it('builds editor-context prompts for cursor and selection state', () => {
+    const cursorPrompt = buildEditorContextSystemPrompt({
+      editorContext: { kind: 'cursor', anchor: 'cursor-anchor' },
+    })
+    const selectionPrompt = buildEditorContextSystemPrompt({
+      editorContext: { kind: 'selection', anchor: 'a', head: 'b' },
+      selectedText: 'Rewrite this exact sentence.',
+    })
+
+    expect(cursorPrompt).toContain('active cursor location')
+    expect(cursorPrompt).toContain('get_cursor_context')
+    expect(selectionPrompt).toContain('active editor selection')
+    expect(selectionPrompt).toContain('Rewrite this exact sentence.')
+    expect(selectionPrompt).toContain('get_selection_snapshot')
   })
 
   it('builds a post-edit summary prompt from actual mutations', () => {

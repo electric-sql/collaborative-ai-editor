@@ -35,6 +35,7 @@ import {
 } from '../../components/CollaborativeEditor'
 import { PresenceBar } from '../../components/PresenceBar'
 import { useStoredDisplayName } from '../../lib/ui/displayName'
+import type { EditorContextPayload } from '../../lib/agent/editorContext'
 
 export const Route = createFileRoute('/doc/$name')({
   component: DocumentPage,
@@ -89,6 +90,8 @@ function DocumentPage() {
   const [localClientId, setLocalClientId] = useState(0)
 
   const [editorController, setEditorController] = useState<EditorController | null>(null)
+  const [editorContext, setEditorContext] = useState<EditorContextPayload | null>(null)
+  const [chatComposerFocused, setChatComposerFocused] = useState(false)
   const [activeState, setActiveState] = useState<EditorActiveState | null>(null)
   const [editorState, setEditorState] = useState<EditorConnectionState>({
     status: 'connecting',
@@ -271,6 +274,9 @@ function DocumentPage() {
                 localUserName={ready ? displayName : 'Guest'}
                 onControllerChange={setEditorController}
                 onConnectionStateChange={setEditorState}
+                onEditorContextChange={setEditorContext}
+                showChatTargetOverlay={chatComposerFocused}
+                chatTargetContext={editorContext}
                 onActiveStateChange={setActiveState}
                 onAwarenessChange={(aw, id) => {
                   setAwareness(aw)
@@ -288,6 +294,8 @@ function DocumentPage() {
             docKey={docKey}
             sessionId={sessionId}
             displayName={ready ? displayName : 'Guest'}
+            editorContext={editorContext}
+            onComposerFocusChange={setChatComposerFocused}
             onStatusChange={setChatState}
           />
         </div>

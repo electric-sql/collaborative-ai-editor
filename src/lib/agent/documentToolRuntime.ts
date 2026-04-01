@@ -25,6 +25,7 @@ import {
 } from './markdownToProsemirror'
 import { takeStablePrefix } from './stability'
 import type { AgentRunMode, AgentTransactionOrigin } from './types'
+import type { EditorContextPayload } from './editorContext'
 
 function waitForProviderSync(provider: YjsProvider, timeoutMs: number): Promise<void> {
   if (provider.synced) {
@@ -322,11 +323,13 @@ export class DocumentToolRuntime {
     docKey: string
     sessionId: string
     signal?: AbortSignal
+    editorContext?: EditorContextPayload
   }): Promise<DocumentToolRuntime> {
     const session = createServerAgentSession(input.docKey, input.sessionId)
     const runtime = new DocumentToolRuntime(session, input.signal)
     await waitForProviderSync(session.provider, 20_000)
     ensureMinimumBlock(session, runtime.origin)
+    runtime.applyEditorContext(input.editorContext)
     runtime.ensureCursorAtEnd()
     session.setStatus('idle')
     return runtime
@@ -335,9 +338,11 @@ export class DocumentToolRuntime {
   static createForSession(input: {
     session: ServerAgentSession
     signal?: AbortSignal
+    editorContext?: EditorContextPayload
   }): DocumentToolRuntime {
     const runtime = new DocumentToolRuntime(input.session, input.signal)
     ensureMinimumBlock(input.session, runtime.origin)
+    runtime.applyEditorContext(input.editorContext)
     runtime.ensureCursorAtEnd()
     input.session.setStatus('idle')
     return runtime
@@ -362,11 +367,43 @@ export class DocumentToolRuntime {
   }
 
   private ensureCursorAtEnd(): void {
-    if (this.cursorAnchorBytes) return
+    if (this.cursorAnchorBytes) {
+      const { meta } = this.getMapping()
+      const mapping = meta.mapping as ProsemirrorMapping
+      const current = resolveAnchor(this.session, mapping, this.cursorAnchorBytes)
+      if (current !== null) {
+        this.session.setCursorFromAbsolute(current, mapping)
+        return
+      }
+    }
     const { doc, meta } = this.getMapping()
     const end = TextSelection.atEnd(doc).from
     this.cursorAnchorBytes = encodeAnchorAt(this.session, end, meta.mapping as ProsemirrorMapping)
     this.session.setCursorFromAbsolute(end, meta.mapping as ProsemirrorMapping)
+  }
+
+  private applyEditorContext(editorContext: EditorContextPayload | undefined): void {
+    if (!editorContext) return
+    const { meta } = this.getMapping()
+    const mapping = meta.mapping as ProsemirrorMapping
+    if (editorContext.kind === 'selection') {
+      const startBytes = decodeAnchorBase64(editorContext.anchor)
+      const endBytes = decodeAnchorBase64(editorContext.head)
+      const start = resolveAnchor(this.session, mapping, startBytes)
+      const end = resolveAnchor(this.session, mapping, endBytes)
+      if (start === null || end === null) return
+      this.selectionStartBytes = startBytes
+      this.selectionEndBytes = endBytes
+      this.cursorAnchorBytes = endBytes
+      this.session.setCursorFromAbsolute(Math.max(start, end), mapping)
+      return
+    }
+    const cursorBytes = decodeAnchorBase64(editorContext.anchor)
+    const cursorPos = resolveAnchor(this.session, mapping, cursorBytes)
+    if (cursorPos === null) return
+    this.clearSelectionInternal()
+    this.cursorAnchorBytes = cursorBytes
+    this.session.setCursorFromAbsolute(cursorPos, mapping)
   }
 
   private updateCursor(absPos: number): void {
@@ -407,14 +444,43 @@ export class DocumentToolRuntime {
     }
   }
 
-  getSelectionSnapshot(): { text: string; from: number; to: number } | null {
+  getSelectionSnapshot(
+    maxCharsBefore: number = 120,
+    maxCharsAfter: number = 120,
+  ): { text: string; from: number; to: number; before: string; after: string } | null {
     const selection = this.resolveSelection()
     if (!selection) return null
     const { doc } = this.getMapping()
+    const safeBefore = Math.max(0, maxCharsBefore)
+    const safeAfter = Math.max(0, maxCharsAfter)
     return {
       text: doc.textBetween(selection.from, selection.to, '\n\n', '\n'),
       from: selection.from,
       to: selection.to,
+      before: doc.textBetween(Math.max(0, selection.from - safeBefore), selection.from, '\n\n', '\n'),
+      after: doc.textBetween(
+        selection.to,
+        Math.min(doc.content.size, selection.to + safeAfter),
+        '\n\n',
+        '\n',
+      ),
+    }
+  }
+
+  getCursorContext(
+    maxCharsBefore: number = 120,
+    maxCharsAfter: number = 120,
+  ): { before: string; after: string } | null {
+    this.ensureCursorAtEnd()
+    const { doc, meta } = this.getMapping()
+    const mapping = meta.mapping as ProsemirrorMapping
+    const pos = resolveAnchor(this.session, mapping, this.cursorAnchorBytes)
+    if (pos === null) return null
+    const safeBefore = Math.max(0, maxCharsBefore)
+    const safeAfter = Math.max(0, maxCharsAfter)
+    return {
+      before: doc.textBetween(Math.max(0, pos - safeBefore), pos, '\n\n', '\n'),
+      after: doc.textBetween(pos, Math.min(doc.content.size, pos + safeAfter), '\n\n', '\n'),
     }
   }
 

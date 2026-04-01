@@ -16,6 +16,7 @@ import {
   initProseMirrorDoc,
 } from 'y-prosemirror'
 import { schema } from './schema'
+import { createChatTargetOverlayPlugin } from './chatTargetOverlay'
 
 export function createHumanEditorState(args: {
   yFragment: Y.XmlFragment
@@ -30,6 +31,7 @@ export function createHumanEditorState(args: {
     plugins: [
       reactKeys(),
       ySyncPlugin(args.yFragment, { mapping }),
+      createChatTargetOverlayPlugin({ yFragment: args.yFragment }),
       yCursorPlugin(args.awareness, {
         cursorBuilder: (user) => {
           const u = user as { role?: string; name?: string; color?: string; status?: string }

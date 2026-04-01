@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { DocumentToolRuntime } from '../../src/lib/agent/documentToolRuntime'
 import { applyExternalInsert, createTestSession, readDocJson, readDocText } from './testUtils'
+import { initProseMirrorDoc } from 'y-prosemirror'
+import { schema } from '../../src/lib/editor/schema'
+import { encodeAnchorBase64, type ProsemirrorMapping } from '../../src/lib/agent/relativeAnchors'
 
 describe('DocumentToolRuntime unit tests', () => {
   it('returns a paged snapshot window with startChar', () => {
@@ -47,6 +50,65 @@ describe('DocumentToolRuntime unit tests', () => {
     runtime.insertText('friend')
 
     expect(readDocText(session)).toBe('Hello friend')
+
+    runtime.destroy()
+  })
+
+  it('seeds the runtime from incoming selection anchors', () => {
+    const session = createTestSession()
+    const initial = DocumentToolRuntime.createForSession({ session })
+
+    initial.insertText('alpha beta gamma')
+    const [match] = initial.searchText('beta')
+    const snapshot = initial.getSelectionSnapshot()
+    initial.selectText(match!.matchId)
+    const selected = initial.getSelectionSnapshot()
+    const { meta } = initProseMirrorDoc(session.fragment, schema)
+    const mapping = meta.mapping as ProsemirrorMapping
+
+    const runtime = DocumentToolRuntime.createForSession({
+      session,
+      editorContext: {
+        kind: 'selection',
+        anchor: encodeAnchorBase64(session.fragment, mapping, selected!.from),
+        head: encodeAnchorBase64(session.fragment, mapping, selected!.to),
+      },
+    })
+
+    expect(snapshot).toBeNull()
+    expect(runtime.getSelectionSnapshot()).toEqual({
+      text: 'beta',
+      from: selected!.from,
+      to: selected!.to,
+      before: 'alpha ',
+      after: ' gamma',
+    })
+
+    runtime.destroy()
+  })
+
+  it('reads cursor context from an incoming cursor anchor', () => {
+    const session = createTestSession()
+    const initial = DocumentToolRuntime.createForSession({ session })
+
+    initial.insertText('alpha beta gamma')
+    const [match] = initial.searchText('beta')
+    initial.placeCursor(match!.matchId, 'start')
+    const { meta } = initProseMirrorDoc(session.fragment, schema)
+    const mapping = meta.mapping as ProsemirrorMapping
+
+    const runtime = DocumentToolRuntime.createForSession({
+      session,
+      editorContext: {
+        kind: 'cursor',
+        anchor: encodeAnchorBase64(session.fragment, mapping, 7),
+      },
+    })
+
+    expect(runtime.getCursorContext(6, 9)).toEqual({
+      before: 'alpha ',
+      after: 'beta gamm',
+    })
 
     runtime.destroy()
   })

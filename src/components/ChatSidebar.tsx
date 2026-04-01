@@ -3,6 +3,7 @@ import { useChat } from '@tanstack/ai-react'
 import type { StreamChunk, UIMessage } from '@tanstack/ai'
 import { Button } from '@base-ui/react/button'
 import { createDurableChatConnection } from '../lib/chat/createDurableChatConnection'
+import type { EditorContextPayload } from '../lib/agent/editorContext'
 
 export type ChatSidebarStatus = {
   connectionStatus: string
@@ -199,6 +200,8 @@ export function ChatSidebar(props: {
   sessionId?: string
   displayName?: string
   onStatusChange?: (status: ChatSidebarStatus) => void
+  editorContext?: EditorContextPayload | null
+  onComposerFocusChange?: (focused: boolean) => void
 }) {
   const { docKey, sessionId = 'default' } = props
   const [mounted, setMounted] = useState(false)
@@ -208,9 +211,16 @@ export function ChatSidebar(props: {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const editorContextRef = useRef<EditorContextPayload | null>(props.editorContext ?? null)
 
   useEffect(() => setMounted(true), [])
   useEffect(() => setDocInsertions([]), [docKey, sessionId])
+  useEffect(() => {
+    editorContextRef.current = props.editorContext ?? null
+  }, [props.editorContext])
+  useEffect(() => {
+    return () => props.onComposerFocusChange?.(false)
+  }, [props.onComposerFocusChange])
 
   const chatId = useMemo(
     () => `${docKey}:${sessionId}`,
@@ -221,6 +231,8 @@ export function ChatSidebar(props: {
       createDurableChatConnection({
         docKey,
         sessionId,
+        getSendData: () =>
+          editorContextRef.current ? { editorContext: editorContextRef.current } : undefined,
       }),
     [docKey, sessionId],
   )
@@ -437,6 +449,7 @@ export function ChatSidebar(props: {
         connectionStatus,
         subscribed: isSubscribed,
         busy,
+        editorContext: props.editorContext ?? null,
         transcript,
         raw: {
           messages,
@@ -453,6 +466,7 @@ export function ChatSidebar(props: {
     docKey,
     isSubscribed,
     messages,
+    props.editorContext,
     renderItems,
     sessionId,
   ])
@@ -611,6 +625,8 @@ export function ChatSidebar(props: {
           placeholder="Message…"
           rows={2}
           onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => props.onComposerFocusChange?.(true)}
+          onBlur={() => props.onComposerFocusChange?.(false)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()

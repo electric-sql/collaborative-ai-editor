@@ -14,6 +14,22 @@ const getDocumentSnapshotDef = toolDefinition({
   }),
 })
 
+const getSelectionSnapshotDef = toolDefinition({
+  name: 'get_selection_snapshot',
+  description:
+    'Read the currently active selection, if there is one, including the selected text and exact range. Use this when the user refers to "this" or the current selection and you want to inspect it before editing.',
+})
+
+const getCursorContextDef = toolDefinition({
+  name: 'get_cursor_context',
+  description:
+    'Read nearby plain-text context around the current cursor location. Use this when the user says "here" and you want to inspect the insertion point before editing.',
+  inputSchema: z.object({
+    maxCharsBefore: z.number().int().min(0).max(1000).optional(),
+    maxCharsAfter: z.number().int().min(0).max(1000).optional(),
+  }),
+})
+
 const searchTextDef = toolDefinition({
   name: 'search_text',
   description:
@@ -139,6 +155,14 @@ export function createDocumentTools(runtime: DocumentToolRuntime) {
     getDocumentSnapshotDef.server(async ({ maxChars, startChar }) =>
       runtime.getDocumentSnapshot(maxChars, startChar),
     ),
+    getSelectionSnapshotDef.server(async () => {
+      const snapshot = runtime.getSelectionSnapshot()
+      return snapshot ? { ok: true, ...snapshot } : { ok: false, reason: 'No active selection' }
+    }),
+    getCursorContextDef.server(async ({ maxCharsBefore, maxCharsAfter }) => {
+      const context = runtime.getCursorContext(maxCharsBefore, maxCharsAfter)
+      return context ? { ok: true, ...context } : { ok: false, reason: 'No active cursor' }
+    }),
     searchTextDef.server(async ({ query, maxResults }) => ({
       ok: true,
       matches: runtime.searchText(query, maxResults),

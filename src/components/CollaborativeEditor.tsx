@@ -9,10 +9,13 @@ import { toggleMark, setBlockType } from 'prosemirror-commands'
 import { wrapInList, liftListItem, sinkListItem } from 'prosemirror-schema-list'
 import type { EditorView } from 'prosemirror-view'
 import type { Awareness } from 'y-protocols/awareness'
-import { undo, redo } from 'y-prosemirror'
+import { initProseMirrorDoc, undo, redo } from 'y-prosemirror'
 import { createHumanEditorState } from '../lib/editor/createHumanEditor'
+import { setChatTargetOverlay } from '../lib/editor/chatTargetOverlay'
 import { schema } from '../lib/editor/schema'
 import { createRoomProvider } from '../lib/yjs/createRoomProvider'
+import { encodeAnchorBase64, type ProsemirrorMapping } from '../lib/agent/relativeAnchors'
+import type { EditorContextPayload } from '../lib/agent/editorContext'
 
 function pickColor(seed: string): string {
   const colors = ['#2c7be5', '#e07020', '#2d9d6c', '#8a4be8', '#c94079']
@@ -76,6 +79,19 @@ function EditorViewBridge(props: {
   return null
 }
 
+function ChatTargetOverlaySync(props: {
+  active: boolean
+  editorContext: EditorContextPayload | null
+}) {
+  useEditorEffect((view) => {
+    setChatTargetOverlay(view, {
+      active: props.active,
+      context: props.editorContext,
+    })
+  }, [props.active, props.editorContext])
+  return null
+}
+
 function isMarkActive(state: import('prosemirror-state').EditorState, markType: import('prosemirror-model').MarkType): boolean {
   const { from, $from, to, empty } = state.selection
   if (empty) return !!markType.isInSet(state.storedMarks || $from.marks())
@@ -132,6 +148,35 @@ function ActiveStateWatcher({ onChange }: { onChange: (state: EditorActiveState)
   return null
 }
 
+function SelectionContextWatcher(props: {
+  fragment: import('yjs').XmlFragment
+  onChange: (context: EditorContextPayload | null) => void
+}) {
+  const editorState = useEditorState()
+  const prevRef = useRef('')
+  const onChangeRef = useRef(props.onChange)
+  onChangeRef.current = props.onChange
+
+  useEffect(() => {
+    if (!editorState) return
+    const { meta } = initProseMirrorDoc(props.fragment, schema)
+    const mapping = meta.mapping as ProsemirrorMapping
+    const anchor = encodeAnchorBase64(props.fragment, mapping, editorState.selection.anchor)
+    const head = encodeAnchorBase64(props.fragment, mapping, editorState.selection.head)
+    const next: EditorContextPayload =
+      editorState.selection.empty
+        ? { kind: 'cursor', anchor: head }
+        : { kind: 'selection', anchor, head }
+    const key = JSON.stringify(next)
+    if (key !== prevRef.current) {
+      prevRef.current = key
+      onChangeRef.current(next)
+    }
+  }, [editorState, props.fragment])
+
+  return null
+}
+
 export function CollaborativeEditor(props: {
   docKey: string
   localUserName: string
@@ -139,6 +184,9 @@ export function CollaborativeEditor(props: {
   onConnectionStateChange?: (state: EditorConnectionState) => void
   onAwarenessChange?: (awareness: Awareness | null, localClientId: number) => void
   onActiveStateChange?: (state: EditorActiveState) => void
+  onEditorContextChange?: (context: EditorContextPayload | null) => void
+  showChatTargetOverlay?: boolean
+  chatTargetContext?: EditorContextPayload | null
 }) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -157,6 +205,9 @@ function CollaborativeEditorInner({
   onConnectionStateChange,
   onAwarenessChange,
   onActiveStateChange,
+  onEditorContextChange,
+  showChatTargetOverlay,
+  chatTargetContext,
 }: {
   docKey: string
   localUserName: string
@@ -164,6 +215,9 @@ function CollaborativeEditorInner({
   onConnectionStateChange?: (state: EditorConnectionState) => void
   onAwarenessChange?: (awareness: Awareness | null, localClientId: number) => void
   onActiveStateChange?: (state: EditorActiveState) => void
+  onEditorContextChange?: (context: EditorContextPayload | null) => void
+  showChatTargetOverlay?: boolean
+  chatTargetContext?: EditorContextPayload | null
 }) {
   const [room, setRoom] = useState<ReturnType<typeof createRoomProvider> | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -190,6 +244,12 @@ function CollaborativeEditorInner({
       onAwarenessChange?.(null, 0)
     }
   }, [room, onAwarenessChange])
+
+  useEffect(() => {
+    if (!room) {
+      onEditorContextChange?.(null)
+    }
+  }, [room, onEditorContextChange])
 
   useEffect(() => {
     if (!room || !onConnectionStateChange) return
@@ -315,7 +375,14 @@ function CollaborativeEditorInner({
             viewRef.current = view
           }}
         />
+        <ChatTargetOverlaySync
+          active={showChatTargetOverlay === true && !!chatTargetContext}
+          editorContext={chatTargetContext ?? null}
+        />
         {onActiveStateChange && <ActiveStateWatcher onChange={onActiveStateChange} />}
+        {onEditorContextChange && (
+          <SelectionContextWatcher fragment={room.fragment} onChange={onEditorContextChange} />
+        )}
         <div className="editor-surface-wrap">
           <ProseMirrorDoc className="editor-surface" />
         </div>

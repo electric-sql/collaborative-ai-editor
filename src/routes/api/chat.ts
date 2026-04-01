@@ -15,11 +15,13 @@ import {
 } from '../../lib/agent/chatStreamRouting'
 import {
   buildChatToolSystemPrompt,
+  buildEditorContextSystemPrompt,
   buildPostEditSummaryPrompt,
   buildPostEditSummarySystemPrompt,
 } from '../../lib/agent/prompts'
 import { createDocumentTools } from '../../lib/agent/documentTools'
 import { DocumentToolRuntime } from '../../lib/agent/documentToolRuntime'
+import type { EditorContextPayload } from '../../lib/agent/editorContext'
 import {
   chatSessionStreamPath,
   durableStreamResourceUrl,
@@ -92,6 +94,7 @@ async function* agentResponseStream(input: {
   mode: 'continue' | 'insert' | 'rewrite'
   messages: DurableSessionMessage[]
   runAgent: boolean
+  editorContext?: EditorContextPayload
 }): AsyncIterable<StreamChunk> {
   if (!input.runAgent) return
 
@@ -105,11 +108,20 @@ async function* agentResponseStream(input: {
       docKey: input.docKey,
       sessionId: input.sessionId,
       signal: abortController.signal,
+      editorContext: input.editorContext,
+    })
+    const selectionSnapshot = runtime.getSelectionSnapshot()
+    const editorContextPrompt = buildEditorContextSystemPrompt({
+      editorContext: input.editorContext,
+      selectedText: selectionSnapshot?.text,
     })
     const stream = chat({
       adapter: openaiText((process.env.OPENAI_MODEL?.trim() || 'gpt-5.4') as any),
       messages: toModelMessages(input.messages) as any,
-      systemPrompts: [buildChatToolSystemPrompt(input.mode)],
+      systemPrompts: [
+        buildChatToolSystemPrompt(input.mode),
+        ...(editorContextPrompt ? [editorContextPrompt] : []),
+      ],
       tools: createDocumentTools(runtime),
       abortController,
     })
@@ -193,7 +205,7 @@ export const Route = createFileRoute('/api/chat')({
           return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
         }
 
-        const { messages, runAgent, agentMode } = parseChatBody(body)
+        const { messages, runAgent, agentMode, editorContext } = parseChatBody(body)
         const origin = getTanStackAiDurableStreamsOriginServer()
         const headers = getTanStackAiDurableStreamsHeadersServer()
         const streamPath = chatSessionStreamPath(docKey, sessionId)
@@ -216,6 +228,7 @@ export const Route = createFileRoute('/api/chat')({
             mode: agentMode,
             messages,
             runAgent,
+            editorContext,
           }),
           waitUntil,
         })

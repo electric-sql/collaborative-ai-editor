@@ -1,5 +1,6 @@
 import type { AgentRunMode } from './types'
 import type { CompletedDocumentMutation } from './documentToolRuntime'
+import type { EditorContextPayload } from './editorContext'
 
 export function buildAgentSystemPrompt(): string {
   return [
@@ -21,6 +22,8 @@ export function buildChatToolSystemPrompt(preferredMode?: AgentRunMode): string 
     'Use chat text only for clarifying questions that are truly necessary.',
     'If the user request is clear enough to act on, do not ask for confirmation. Make the edit.',
     'Always inspect the document with tools before making non-trivial edits; do not guess where text lives.',
+    'The current user cursor or selection may already be preloaded for this turn from the editor.',
+    'Use get_selection_snapshot to inspect the current selection and get_cursor_context to inspect the current cursor location when the user refers to "this" or "here".',
     'Use search_text before place_cursor or select_text when the target location is not already obvious from prior tool results.',
     'When the user asks to change the same exact name or phrase in multiple places, use search_text to gather all exact matches and prefer replace_matches over editing occurrences one by one.',
     'Use select_current_block when the user asks to format or rewrite the current line, current paragraph, or current block and the cursor is already in the right place.',
@@ -48,6 +51,29 @@ export function buildChatToolSystemPrompt(preferredMode?: AgentRunMode): string 
     'After non-streamed document edits such as delete_selection, insert_text, or set_format, follow up with one short chat sentence describing what you actually changed.',
     'If a tool call did not change the document, do not claim that it did.',
     'If the target is ambiguous or the user intent is unclear, ask a clarifying question instead of editing the wrong text.' + preferred,
+  ].join(' ')
+}
+
+export function buildEditorContextSystemPrompt(input: {
+  editorContext?: EditorContextPayload
+  selectedText?: string
+}): string | null {
+  if (!input.editorContext) return null
+  if (input.editorContext.kind === 'selection') {
+    const selected = input.selectedText?.trim() ?? ''
+    return [
+      'The user has an active editor selection for this turn.',
+      selected.length > 0
+        ? `Selected text: "${selected.slice(0, 240)}${selected.length > 240 ? '…' : ''}".`
+        : 'The selection text is currently empty or unavailable.',
+      'When the user says "this", "here", "that phrase", or asks to rewrite, format, or replace the selected text, prefer using the current selection directly.',
+      'If you need nearby context before editing, call get_selection_snapshot or get_document_snapshot.',
+    ].join(' ')
+  }
+  return [
+    'The user has an active cursor location in the editor for this turn.',
+    'When the user says "here" or refers to the current insertion point, use the current cursor directly instead of searching first.',
+    'If you need nearby context before editing, call get_cursor_context or get_document_snapshot.',
   ].join(' ')
 }
 

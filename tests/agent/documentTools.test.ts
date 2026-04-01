@@ -14,6 +14,8 @@ describe('document tool unit tests', () => {
 
     expect(names).toEqual([
       'get_document_snapshot',
+      'get_selection_snapshot',
+      'get_cursor_context',
       'search_text',
       'replace_matches',
       'place_cursor',
@@ -52,6 +54,34 @@ describe('document tool unit tests', () => {
       ok: true,
       matches: [expect.objectContaining({ text: 'beta' })],
     })
+
+    runtime.destroy()
+  })
+
+  it('runs selection and cursor context tools', async () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+    runtime.insertText('alpha beta gamma')
+    const tools = createToolMap(runtime)
+    const search = (await tools.get('search_text')!.execute?.({ query: 'beta', maxResults: 1 })) as {
+      ok: true
+      matches: Array<{ matchId: string }>
+    }
+
+    await tools.get('select_text')!.execute?.({ matchId: search.matches[0]!.matchId })
+    const selection = await tools.get('get_selection_snapshot')!.execute?.({})
+    await tools.get('place_cursor')!.execute?.({ matchId: search.matches[0]!.matchId, edge: 'start' })
+    const cursor = await tools.get('get_cursor_context')!.execute?.({ maxCharsBefore: 6, maxCharsAfter: 9 })
+
+    expect(selection).toEqual({
+      ok: true,
+      text: 'beta',
+      from: expect.any(Number),
+      to: expect.any(Number),
+      before: 'alpha ',
+      after: ' gamma',
+    })
+    expect(cursor).toEqual({ ok: true, before: 'alpha ', after: 'beta gamm' })
 
     runtime.destroy()
   })

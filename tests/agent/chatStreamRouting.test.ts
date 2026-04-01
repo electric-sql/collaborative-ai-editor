@@ -59,7 +59,15 @@ describe('chat stream routing unit tests', () => {
           { role: 'user', content: 'hello' },
           { role: 'assistant', parts: [{ type: 'text', text: 'hi' }] },
         ],
-        data: { runAgent: false, agentMode: 'rewrite' },
+        data: {
+          runAgent: false,
+          agentMode: 'rewrite',
+          editorContext: {
+            kind: 'selection',
+            anchor: 'start-anchor',
+            head: 'end-anchor',
+          },
+        },
       }),
     ).toEqual({
       messages: [
@@ -68,6 +76,11 @@ describe('chat stream routing unit tests', () => {
       ],
       runAgent: false,
       agentMode: 'rewrite',
+      editorContext: {
+        kind: 'selection',
+        anchor: 'start-anchor',
+        head: 'end-anchor',
+      },
     })
   })
 

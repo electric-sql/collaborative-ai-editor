@@ -1,5 +1,6 @@
 import type { StreamChunk } from '@tanstack/ai'
 import type { DurableSessionMessage } from '@durable-streams/tanstack-ai-transport'
+import { parseEditorContextPayload, type EditorContextPayload } from './editorContext'
 
 export function textFromDurableMessage(message: DurableSessionMessage): string {
   const parts = message.parts ?? []
@@ -28,6 +29,7 @@ export function parseChatBody(json: unknown): {
   messages: DurableSessionMessage[]
   runAgent: boolean
   agentMode: 'continue' | 'insert' | 'rewrite'
+  editorContext?: EditorContextPayload
 } {
   if (!json || typeof json !== 'object') {
     return { messages: [], runAgent: true, agentMode: 'continue' }
@@ -63,7 +65,8 @@ export function parseChatBody(json: unknown): {
       : o.agentMode === 'insert' || o.agentMode === 'rewrite' || o.agentMode === 'continue'
         ? o.agentMode
       : 'continue'
-  return { messages, runAgent, agentMode }
+  const editorContext = parseEditorContextPayload(data?.editorContext)
+  return { messages, runAgent, agentMode, ...(editorContext ? { editorContext } : {}) }
 }
 
 function normalizeIncomingMessage(item: unknown): DurableSessionMessage | null {
