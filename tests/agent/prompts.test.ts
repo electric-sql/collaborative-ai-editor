@@ -4,6 +4,8 @@ import {
   buildAgentUserPromptTemplate,
   buildChatToolSystemPrompt,
   buildDeterministicReply,
+  buildPostEditSummaryPrompt,
+  buildPostEditSummarySystemPrompt,
 } from '../../src/lib/agent/prompts'
 
 describe('prompt unit tests', () => {
@@ -23,7 +25,8 @@ describe('prompt unit tests', () => {
     expect(defaultPrompt).toContain('must perform that work in the document with tools')
     expect(defaultPrompt).toContain('write me a short story')
     expect(defaultPrompt).toContain('Only call start_streaming_edit')
-    expect(defaultPrompt).toContain('system will generate the user-facing summary automatically')
+    expect(defaultPrompt).toContain('follow up with one short chat sentence describing what you actually changed')
+    expect(defaultPrompt).toContain('If a tool call did not change the document, do not claim that it did')
     expect(insertPrompt).toContain('prefer insert mode')
     expect(rewritePrompt).toContain('prefer rewrite mode')
   })
@@ -56,5 +59,19 @@ describe('prompt unit tests', () => {
     expect(reply).toContain('[Electra · rewrite]')
     expect(reply).toContain('deterministic streamed reply')
     expect(reply).toContain('Polish this paragraph')
+  })
+
+  it('builds a post-edit summary prompt from actual mutations', () => {
+    const systemPrompt = buildPostEditSummarySystemPrompt()
+    const userPrompt = buildPostEditSummaryPrompt({
+      userRequest: 'Add a short story at the end.',
+      mutations: [
+        { kind: 'streaming_edit', mode: 'continue', contentFormat: 'plain_text', committedChars: 84 },
+      ],
+    })
+
+    expect(systemPrompt).toContain('Do not make any more document changes')
+    expect(userPrompt).toContain('User request: Add a short story at the end.')
+    expect(userPrompt).toContain('completed a continue streaming edit in plain_text (84 chars)')
   })
 })

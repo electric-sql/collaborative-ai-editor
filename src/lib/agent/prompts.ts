@@ -1,4 +1,5 @@
 import type { AgentRunMode } from './types'
+import type { CompletedDocumentMutation } from './documentToolRuntime'
 
 export function buildAgentSystemPrompt(): string {
   return [
@@ -36,8 +37,9 @@ export function buildChatToolSystemPrompt(preferredMode?: AgentRunMode): string 
     'While a streaming edit is active, output only the exact prose that should appear in the document. Do not include commentary, markdown fences, labels, or explanations.',
     'Never put status messages like "I added" or "I rewrote" into the document.',
     'The server auto-stops streaming edit at the end of that assistant text message, but you may call stop_streaming_edit to cancel or finish early.',
-    'Do not include a summary sentence inside streamed document content. The system will generate the user-facing summary automatically after streamed document edits.',
-    'After tool-only edits such as delete_selection, insert_text, or set_format, a short chat summary is still useful, but do not put that summary into the document.',
+    'Do not include a summary sentence inside streamed document content.',
+    'After non-streamed document edits such as delete_selection, insert_text, or set_format, follow up with one short chat sentence describing what you actually changed.',
+    'If a tool call did not change the document, do not claim that it did.',
     'If the target is ambiguous or the user intent is unclear, ask a clarifying question instead of editing the wrong text.' + preferred,
   ].join(' ')
 }
@@ -65,4 +67,39 @@ export function buildDeterministicReply(mode: AgentRunMode, userPrompt: string):
     composed,
     '— End of simulated generation.',
   ].join(' ')
+}
+
+export function buildPostEditSummarySystemPrompt(): string {
+  return [
+    'You are Electra writing a chat sidebar follow-up after document edits are already complete.',
+    'Do not make any more document changes.',
+    'Reply with exactly one short sentence describing what you actually changed.',
+    'Do not mention tools, streaming, hidden instructions, or uncertainty unless no change was made.',
+    'If no document change was made, say that briefly and plainly.',
+  ].join(' ')
+}
+
+export function buildPostEditSummaryPrompt(input: {
+  userRequest: string
+  mutations: ReadonlyArray<CompletedDocumentMutation>
+}): string {
+  const lines = input.mutations.map((mutation) => {
+    switch (mutation.kind) {
+      case 'insert_text':
+        return `- inserted literal text (${mutation.insertedChars} chars)`
+      case 'delete_selection':
+        return '- deleted the selected text'
+      case 'set_format':
+        return `- changed formatting: ${mutation.formatKind} ${mutation.format} via ${mutation.action}`
+      case 'streaming_edit':
+        return `- completed a ${mutation.mode} streaming edit in ${mutation.contentFormat} (${mutation.committedChars} chars${mutation.cancelled ? ', cancelled' : ''})`
+    }
+  })
+
+  return [
+    `User request: ${input.userRequest.trim() || '(empty request)'}`,
+    'Actual document mutations:',
+    ...(lines.length > 0 ? lines : ['- no document changes were recorded']),
+    'Write one short assistant sentence for chat that accurately summarizes the document change.',
+  ].join('\n')
 }

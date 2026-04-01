@@ -271,6 +271,17 @@ export type FormatName =
   | 'ordered_list'
 export type FormatAction = 'add' | 'remove' | 'toggle' | 'set'
 export type ContentFormat = 'plain_text' | 'markdown'
+export type CompletedDocumentMutation =
+  | { kind: 'insert_text'; insertedChars: number }
+  | { kind: 'delete_selection' }
+  | { kind: 'set_format'; formatKind: FormatKind; format: FormatName; action: FormatAction | 'set' }
+  | {
+      kind: 'streaming_edit'
+      mode: AgentRunMode
+      contentFormat: ContentFormat
+      committedChars: number
+      cancelled?: boolean
+    }
 
 interface ActiveStreamingEdit {
   id: string
@@ -295,6 +306,7 @@ export class DocumentToolRuntime {
   private selectionEndBytes: Uint8Array | undefined
   private readonly matches = new Map<string, SearchMatchHandle>()
   private activeEdit: ActiveStreamingEdit | null = null
+  private readonly completedMutations: CompletedDocumentMutation[] = []
 
   private constructor(
     private readonly session: ServerAgentSession,
@@ -336,6 +348,14 @@ export class DocumentToolRuntime {
 
   private getMapping(): ReturnType<typeof initProseMirrorDoc> {
     return initProseMirrorDoc(this.session.fragment, schema)
+  }
+
+  getCompletedMutations(): ReadonlyArray<CompletedDocumentMutation> {
+    return this.completedMutations
+  }
+
+  getCompletedMutationCount(): number {
+    return this.completedMutations.length
   }
 
   private ensureCursorAtEnd(): void {
@@ -640,6 +660,12 @@ export class DocumentToolRuntime {
     }
 
     applyPmRootToY(this.session, appliedTr.doc, meta, this.origin)
+    this.completedMutations.push({
+      kind: 'set_format',
+      formatKind: input.kind,
+      format: input.format,
+      action,
+    })
     const nextFrom = appliedTr.selection.from
     const nextTo = appliedTr.selection.to
     const { meta: nextMeta } = this.getMapping()
@@ -669,6 +695,9 @@ export class DocumentToolRuntime {
       endPos = insertAt(this.session, this.origin, text, pos)
     }
     this.updateCursor(endPos)
+    if (text.length > 0) {
+      this.completedMutations.push({ kind: 'insert_text', insertedChars: text.length })
+    }
     return { ok: true, insertedChars: text.length }
   }
 
@@ -681,6 +710,7 @@ export class DocumentToolRuntime {
     const endPos = deleteRange(this.session, this.origin, selection.from, selection.to)
     this.clearSelectionInternal()
     this.updateCursor(endPos)
+    this.completedMutations.push({ kind: 'delete_selection' })
     return { ok: true, deleted: true }
   }
 
@@ -937,6 +967,15 @@ export class DocumentToolRuntime {
       ok: true as const,
       committedChars: edit.committedChars,
       ...(cancelled ? { cancelled: true } : {}),
+    }
+    if (edit.committedChars > 0) {
+      this.completedMutations.push({
+        kind: 'streaming_edit',
+        mode: edit.mode,
+        contentFormat: edit.contentFormat,
+        committedChars: edit.committedChars,
+        ...(cancelled ? { cancelled: true } : {}),
+      })
     }
     this.activeEdit = null
     this.session.setTail(null)

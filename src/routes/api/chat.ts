@@ -10,9 +10,14 @@ import { attachAgentRunController, releaseAgentRunAbort } from '../../lib/agent/
 import {
   parseChatBody,
   routeAgentStreamChunks,
+  textFromDurableMessage,
   toModelMessages,
 } from '../../lib/agent/chatStreamRouting'
-import { buildChatToolSystemPrompt } from '../../lib/agent/prompts'
+import {
+  buildChatToolSystemPrompt,
+  buildPostEditSummaryPrompt,
+  buildPostEditSummarySystemPrompt,
+} from '../../lib/agent/prompts'
 import { createDocumentTools } from '../../lib/agent/documentTools'
 import { DocumentToolRuntime } from '../../lib/agent/documentToolRuntime'
 import {
@@ -30,6 +35,31 @@ function latestUserMessage(messages: DurableSessionMessage[]): DurableSessionMes
     }
   }
   return null
+}
+
+function latestUserMessageText(messages: DurableSessionMessage[]): string {
+  const latest = latestUserMessage(messages)
+  return latest ? textFromDurableMessage(latest) : ''
+}
+
+async function* postEditSummaryStream(input: {
+  runtime: DocumentToolRuntime
+  messages: DurableSessionMessage[]
+  abortController: AbortController
+}): AsyncIterable<StreamChunk> {
+  const summaryPrompt = buildPostEditSummaryPrompt({
+    userRequest: latestUserMessageText(input.messages),
+    mutations: input.runtime.getCompletedMutations(),
+  })
+  const stream = chat({
+    adapter: openaiText((process.env.OPENAI_MODEL?.trim() || 'gpt-5.4') as any),
+    messages: [{ role: 'user', content: summaryPrompt }] as any,
+    systemPrompts: [buildPostEditSummarySystemPrompt()],
+    abortController: input.abortController,
+  })
+  for await (const chunk of stream) {
+    yield chunk
+  }
 }
 
 function resolveWaitUntil(
@@ -67,6 +97,8 @@ async function* agentResponseStream(input: {
 
   const abortController = attachAgentRunController(input.sessionId)
   let runtime: DocumentToolRuntime | null = null
+  let pendingPostEditSummary = false
+  let observedMutationCount = 0
 
   try {
     runtime = await DocumentToolRuntime.create({
@@ -83,7 +115,29 @@ async function* agentResponseStream(input: {
     })
 
     for await (const chunk of routeAgentStreamChunks(stream, runtime)) {
+      const mutationCount = runtime.getCompletedMutationCount()
+      if (mutationCount > observedMutationCount) {
+        observedMutationCount = mutationCount
+        pendingPostEditSummary = true
+      }
+      if (chunk.type === 'TEXT_MESSAGE_START' && chunk.role === 'assistant') {
+        pendingPostEditSummary = false
+      }
       yield chunk
+    }
+
+    if (
+      !abortController.signal.aborted &&
+      pendingPostEditSummary &&
+      runtime.getCompletedMutationCount() > 0
+    ) {
+      for await (const chunk of postEditSummaryStream({
+        runtime,
+        messages: input.messages,
+        abortController,
+      })) {
+        yield chunk
+      }
     }
   } catch (error) {
     const chunk: StreamChunk = {

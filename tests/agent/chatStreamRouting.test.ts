@@ -225,7 +225,7 @@ describe('chat stream routing unit tests', () => {
     ])
   })
 
-  it('synthesizes a summary when tool-only document edits finish without assistant text', async () => {
+  it('does not synthesize a summary when tool-only document edits finish without assistant text', async () => {
     const runtime = createRouterStub(false)
     const chunks: StreamChunk[] = [
       { type: 'RUN_STARTED', timestamp: 1, runId: 'r1' },
@@ -235,27 +235,6 @@ describe('chat stream routing unit tests', () => {
 
     const yielded = await collect(routeAgentStreamChunks((async function* () { yield* chunks })(), runtime))
 
-    expect(yielded).toEqual([
-      chunks[0]!,
-      chunks[1]!,
-      {
-        type: 'TEXT_MESSAGE_START',
-        timestamp: 3,
-        messageId: 'r1-summary',
-        role: 'assistant',
-      },
-      {
-        type: 'TEXT_MESSAGE_CONTENT',
-        timestamp: 3,
-        messageId: 'r1-summary',
-        delta: 'Updated the document.',
-      },
-      {
-        type: 'TEXT_MESSAGE_END',
-        timestamp: 3,
-        messageId: 'r1-summary',
-      },
-      chunks[2]!,
-    ])
+    expect(yielded).toEqual(chunks)
   })
 })

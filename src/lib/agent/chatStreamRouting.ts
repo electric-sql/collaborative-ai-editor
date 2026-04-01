@@ -105,51 +105,17 @@ export interface StreamingEditRouter {
   getActiveStreamingEditInfo?: () => { mode: string; contentFormat?: string } | null
 }
 
-const DOCUMENT_MUTATION_TOOLS = new Set([
-  'insert_text',
-  'delete_selection',
-  'set_format',
-  'start_streaming_edit',
-  'stop_streaming_edit',
-])
-
-function buildStreamingInsertSummary(input: {
-  mode?: string
-  contentFormat?: string
-  cancelled?: boolean
-}): string {
-  if (input.cancelled) {
-    return 'Stopped the document insertion.'
-  }
-  if (input.mode === 'rewrite') {
-    return input.contentFormat === 'markdown'
-      ? 'Updated the selected text in the document with formatted content.'
-      : 'Updated the selected text in the document.'
-  }
-  if (input.contentFormat === 'markdown') {
-    return 'Inserted formatted content into the document.'
-  }
-  return 'Inserted content into the document.'
-}
-
 export async function* routeAgentStreamChunks(
   stream: AsyncIterable<StreamChunk>,
   runtime: StreamingEditRouter,
 ): AsyncIterable<StreamChunk> {
   let suppressedMessageId: string | null = null
-  let suppressedInfo: { mode?: string; contentFormat?: string } | null = null
-  let pendingSyntheticSummary:
-    | { timestamp: number; model?: string; messageId: string; text: string }
-    | null = null
-  let sawVisibleAssistantText = false
-  let sawDocumentMutationTool = false
 
   for await (const chunk of stream) {
     if (chunk.type === 'TEXT_MESSAGE_START' && chunk.role === 'assistant') {
       if (runtime.isStreamingEditActive()) {
         suppressedMessageId = chunk.messageId
         const info = runtime.getActiveStreamingEditInfo?.() ?? null
-        suppressedInfo = info
         yield {
           type: 'CUSTOM',
           timestamp: chunk.timestamp,
@@ -162,10 +128,6 @@ export async function* routeAgentStreamChunks(
         }
         continue
       }
-      if (pendingSyntheticSummary) {
-        pendingSyntheticSummary = null
-      }
-      sawVisibleAssistantText = true
       yield chunk
       continue
     }
@@ -185,10 +147,6 @@ export async function* routeAgentStreamChunks(
       continue
     }
 
-    if (chunk.type === 'TOOL_CALL_START' && DOCUMENT_MUTATION_TOOLS.has(chunk.toolName)) {
-      sawDocumentMutationTool = true
-    }
-
     if (
       (chunk.type === 'TOOL_CALL_START' || chunk.type === 'RUN_FINISHED' || chunk.type === 'RUN_ERROR') &&
       suppressedMessageId !== null
@@ -204,72 +162,7 @@ export async function* routeAgentStreamChunks(
           ...result,
         },
       }
-      pendingSyntheticSummary = {
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: `${suppressedMessageId}-summary`,
-        text: buildStreamingInsertSummary({
-          ...suppressedInfo,
-          cancelled: result.cancelled,
-        }),
-      }
       suppressedMessageId = null
-      suppressedInfo = null
-    }
-
-    if (chunk.type === 'RUN_FINISHED' && pendingSyntheticSummary) {
-      yield {
-        type: 'TEXT_MESSAGE_START',
-        timestamp: pendingSyntheticSummary.timestamp,
-        model: pendingSyntheticSummary.model,
-        messageId: pendingSyntheticSummary.messageId,
-        role: 'assistant',
-      }
-      yield {
-        type: 'TEXT_MESSAGE_CONTENT',
-        timestamp: pendingSyntheticSummary.timestamp,
-        model: pendingSyntheticSummary.model,
-        messageId: pendingSyntheticSummary.messageId,
-        delta: pendingSyntheticSummary.text,
-      }
-      yield {
-        type: 'TEXT_MESSAGE_END',
-        timestamp: pendingSyntheticSummary.timestamp,
-        model: pendingSyntheticSummary.model,
-        messageId: pendingSyntheticSummary.messageId,
-      }
-      pendingSyntheticSummary = null
-    }
-
-    if (
-      chunk.type === 'RUN_FINISHED' &&
-      sawDocumentMutationTool &&
-      !sawVisibleAssistantText &&
-      suppressedMessageId === null &&
-      !pendingSyntheticSummary
-    ) {
-      const summaryMessageId = `${chunk.runId}-summary`
-      yield {
-        type: 'TEXT_MESSAGE_START',
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: summaryMessageId,
-        role: 'assistant',
-      }
-      yield {
-        type: 'TEXT_MESSAGE_CONTENT',
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: summaryMessageId,
-        delta: 'Updated the document.',
-      }
-      yield {
-        type: 'TEXT_MESSAGE_END',
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: summaryMessageId,
-      }
-      sawVisibleAssistantText = true
     }
 
     if (chunk.type === 'TEXT_MESSAGE_END' && chunk.messageId === suppressedMessageId) {
@@ -284,17 +177,7 @@ export async function* routeAgentStreamChunks(
           ...result,
         },
       }
-      pendingSyntheticSummary = {
-        timestamp: chunk.timestamp,
-        model: chunk.model,
-        messageId: `${suppressedMessageId}-summary`,
-        text: buildStreamingInsertSummary({
-        ...suppressedInfo,
-        cancelled: result.cancelled,
-        }),
-      }
       suppressedMessageId = null
-      suppressedInfo = null
       continue
     }
 

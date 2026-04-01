@@ -22,6 +22,23 @@ type DocInsertMessage = {
   committedChars?: number
 }
 
+type RenderItem =
+  | {
+      kind: 'message'
+      key: string
+      order: number
+      time: number
+      message: UIMessage
+      variant: 'full' | 'meta' | 'text'
+    }
+  | {
+      kind: 'insertion'
+      key: string
+      order: number
+      time: number
+      insertion: DocInsertMessage
+    }
+
 function previewText(text: string, maxChars: number = 96): string {
   if (text.length <= maxChars) return text
   return `${text.slice(0, maxChars)}…`
@@ -34,6 +51,44 @@ function stringifyData(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+function messageTimestamp(message: UIMessage, fallback: number): number {
+  if (message.createdAt instanceof Date) return message.createdAt.getTime()
+  if (message.createdAt) return new Date(message.createdAt as unknown as string).getTime()
+  return fallback
+}
+
+function filterMessageParts(message: UIMessage, predicate: (part: UIMessage['parts'][number]) => boolean): UIMessage {
+  return {
+    ...message,
+    parts: Array.isArray(message.parts) ? message.parts.filter(predicate) : [],
+  }
+}
+
+function isTextPart(part: UIMessage['parts'][number]): boolean {
+  return part.type === 'text'
+}
+
+function hasStartStreamingEditTool(message: UIMessage): boolean {
+  return (
+    Array.isArray(message.parts) &&
+    message.parts.some(
+      (part) => part.type === 'tool-call' && 'name' in part && part.name === 'start_streaming_edit',
+    )
+  )
+}
+
+function hasVisibleAssistantText(message: UIMessage): boolean {
+  return (
+    Array.isArray(message.parts) &&
+    message.parts.some(
+      (part) =>
+        part.type === 'text' &&
+        (('content' in part && typeof part.content === 'string' && part.content.trim().length > 0) ||
+          ('text' in part && typeof part.text === 'string' && part.text.trim().length > 0)),
+    )
+  )
 }
 
 function MessagePartView({ message }: { message: UIMessage }) {
@@ -123,6 +178,7 @@ export function ChatSidebar(props: {
   const [mounted, setMounted] = useState(false)
   const [draft, setDraft] = useState('')
   const [docInsertions, setDocInsertions] = useState<DocInsertMessage[]>([])
+  const [showTools, setShowTools] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -252,38 +308,79 @@ export function ChatSidebar(props: {
   }, [messages.length, docInsertions.length])
 
   const renderItems = useMemo(() => {
-    const messageItems = messages.map((message, index) => ({
-      kind: 'message' as const,
-      key: `msg-${message.id}`,
-      order: index,
-      time:
-        message.createdAt instanceof Date
-          ? message.createdAt.getTime()
-          : message.createdAt
-            ? new Date(message.createdAt as unknown as string).getTime()
-            : index,
-      message,
-    }))
-    const insertionItems = docInsertions.map((insertion, index) => ({
-      kind: 'insertion' as const,
-      key: `insert-${insertion.id}`,
-      order: messages.length + index,
-      time: insertion.startedAt,
-      insertion,
-    }))
-    return [...messageItems, ...insertionItems].sort((a, b) =>
+    const items: RenderItem[] = []
+    let order = 0
+    let insertionCursor = 0
+
+    messages.forEach((message, index) => {
+      const time = messageTimestamp(message, index)
+      const textOnlyMessage = filterMessageParts(message, isTextPart)
+      const metaOnlyMessage = filterMessageParts(message, (part) => !isTextPart(part))
+      const hasVisibleText = hasVisibleAssistantText(textOnlyMessage)
+      const hasMeta = Array.isArray(metaOnlyMessage.parts) && metaOnlyMessage.parts.length > 0
+
+      if (message.role === 'assistant' && hasMeta && hasVisibleText) {
+        if (showTools) {
+          items.push({
+            kind: 'message',
+            key: `msg-${message.id}-meta`,
+            order: order++,
+            time,
+            message: metaOnlyMessage,
+            variant: 'meta',
+          })
+        }
+
+        let textTime = time
+        if (hasStartStreamingEditTool(message) && insertionCursor < docInsertions.length) {
+          const relatedInsertion = docInsertions[insertionCursor]
+          if (relatedInsertion) {
+            textTime = Math.max(textTime, relatedInsertion.updatedAt + 1)
+            insertionCursor += 1
+          }
+        }
+
+        items.push({
+          kind: 'message',
+          key: `msg-${message.id}-text`,
+          order: order++,
+          time: textTime,
+          message: textOnlyMessage,
+          variant: 'text',
+        })
+        return
+      }
+
+      if (message.role === 'assistant' && !showTools && !hasVisibleText) {
+        return
+      }
+
+      items.push({
+        kind: 'message',
+        key: `msg-${message.id}`,
+        order: order++,
+        time,
+        message: showTools ? message : textOnlyMessage,
+        variant: 'full',
+      })
+    })
+
+    if (showTools) {
+      docInsertions.forEach((insertion) => {
+        items.push({
+          kind: 'insertion',
+          key: `insert-${insertion.id}`,
+          order: order++,
+          time: insertion.complete ? insertion.updatedAt : insertion.startedAt,
+          insertion,
+        })
+      })
+    }
+
+    return items.sort((a, b) =>
       a.time === b.time ? a.order - b.order : a.time - b.time,
     )
-  }, [docInsertions, messages])
-
-  const hasVisibleAssistantText = (message: UIMessage) =>
-    Array.isArray(message.parts) &&
-    message.parts.some(
-      (part) =>
-        part.type === 'text' &&
-        (('content' in part && typeof part.content === 'string' && part.content.trim().length > 0) ||
-          ('text' in part && typeof part.text === 'string' && part.text.trim().length > 0)),
-    )
+  }, [docInsertions, messages, showTools])
 
   // Auto-grow textarea
   useEffect(() => {
@@ -305,6 +402,15 @@ export function ChatSidebar(props: {
     }
   }
 
+  const handleStop = () => {
+    stop()
+    void fetch('/api/agent/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    }).catch(() => {})
+  }
+
   if (!mounted) {
     return (
       <aside className="chat-sidebar">
@@ -315,7 +421,17 @@ export function ChatSidebar(props: {
 
   return (
     <aside className="chat-sidebar">
-      <h2 className="chat-heading">Chat</h2>
+      <div className="chat-header">
+        <h2 className="chat-heading">Chat</h2>
+        <label className="chat-tools-toggle">
+          <input
+            type="checkbox"
+            checked={showTools}
+            onChange={(event) => setShowTools(event.target.checked)}
+          />
+          <span>Show tools</span>
+        </label>
+      </div>
       <div ref={viewportRef} className="chat-messages" aria-live="polite" onScroll={handleScroll}>
         {renderItems.length === 0 ? (
           <p className="chat-empty">No messages yet. Send a message to begin.</p>
@@ -326,7 +442,8 @@ export function ChatSidebar(props: {
                 <li
                   key={item.key}
                   className={`chat-msg chat-msg-${item.message.role}${
-                    item.message.role === 'assistant' && !hasVisibleAssistantText(item.message)
+                    item.message.role === 'assistant' &&
+                    (item.variant === 'meta' || !hasVisibleAssistantText(item.message))
                       ? ' chat-msg-assistant-meta'
                       : ''
                   }`}
@@ -371,25 +488,20 @@ export function ChatSidebar(props: {
             )}
           </ul>
         )}
+        {busy ? (
+          <div className="chat-typing-row" aria-label="Generating response">
+            <div className="chat-typing">
+              <span className="chat-typing__dot" />
+              <span className="chat-typing__dot" />
+              <span className="chat-typing__dot" />
+            </div>
+            <Button className="chat-stop-btn chat-stop-btn-inline" onClick={handleStop} aria-label="Stop generating">
+              Stop
+            </Button>
+          </div>
+        ) : null}
       </div>
       {error ? <p className="chat-error">{error.message}</p> : null}
-      {busy && (
-        <div className="chat-stop-bar">
-          <Button
-            className="chat-stop-btn"
-            onClick={() => {
-              stop()
-              void fetch('/api/agent/stop', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sessionId }),
-              }).catch(() => {})
-            }}
-          >
-            Stop generating
-          </Button>
-        </div>
-      )}
       <div className="chat-input-wrap">
         <textarea
           ref={textareaRef}
