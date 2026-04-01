@@ -11,8 +11,8 @@
     "head_sampling_rate": 1
   },
   "vars": {
-    "APP_BASE_URL": "https://collaborative-ai-editor.vaxine.workers.dev",
-    "PUBLIC_APP_BASE_URL": "https://collaborative-ai-editor.vaxine.workers.dev",
+    "APP_BASE_URL": "https://collaborative-ai-editor.examples.electric-sql.com",
+    "PUBLIC_APP_BASE_URL": "https://collaborative-ai-editor.examples.electric-sql.com",
     "OPENAI_MODEL": "gpt-5.4",
     "DURABLE_STREAMS_YJS_BASE_URL": "https://api.electric-sql.cloud/v1/yjs/svc-yjs-amazing-bird-3nci0894vt",
     "DURABLE_STREAMS_CHAT_BASE_URL": "https://api.electric-sql.cloud/v1/stream/svc-symbolic-urial-k0drhgga4y"

@@ -2,6 +2,8 @@
 
 This repo is a demo of [Durable Streams](http://durablestreams.com) as the transport and persistence layer for a collaborative AI writing app.
 
+Live demo: [collaborative-ai-editor.examples.electric-sql.com](https://collaborative-ai-editor.examples.electric-sql.com)
+
 The app combines two Durable Streams integrations:
 
 1. [Durable Streams + Yjs](https://durablestreams.com/yjs) for shared ProseMirror document collaboration over plain HTTP.
