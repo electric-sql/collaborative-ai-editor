@@ -66,7 +66,7 @@ const HEADING_MENU_ITEMS: Array<{ action: EditorToolbarAction; label: string; ic
   { action: 'heading1', label: 'Heading 1', icon: LuHeading1 },
   { action: 'heading2', label: 'Heading 2', icon: LuHeading2 },
   { action: 'heading3', label: 'Heading 3', icon: LuHeading3 },
-  { action: 'heading4', label: 'Heading 4', icon: LuHeading3 },
+  // { action: 'heading4', label: 'Heading 4', icon: LuHeading3 },
 ]
 
 function DocumentPage() {
@@ -277,7 +277,7 @@ function DocumentPage() {
                 onEditorContextChange={setEditorContext}
                 showChatTargetOverlay={chatComposerFocused}
                 chatTargetContext={editorContext}
-                holdChatTarget={chatComposerFocused}
+                freezeEditorContext={chatComposerFocused}
                 onActiveStateChange={setActiveState}
                 onAwarenessChange={(aw, id) => {
                   setAwareness(aw)

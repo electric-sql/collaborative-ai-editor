@@ -70,6 +70,14 @@ function ensureMinimumBlock(session: ServerAgentSession, origin: AgentTransactio
   }, origin)
 }
 
+function isEmptyBootstrapDoc(doc: PMNode): boolean {
+  return (
+    doc.childCount === 1 &&
+    doc.firstChild?.type === schema.nodes.paragraph &&
+    doc.firstChild.content.size === 0
+  )
+}
+
 function applyPmRootToY(
   session: ServerAgentSession,
   nextDoc: import('prosemirror-model').Node,
@@ -994,11 +1002,7 @@ export class DocumentToolRuntime {
     const pos = resolveAnchor(this.session, mapping, edit.insertAnchorBytes)
     if (pos === null) return null
 
-    const emptyBootstrapDoc =
-      doc.childCount === 1 &&
-      doc.firstChild?.type === schema.nodes.paragraph &&
-      doc.firstChild.content.size === 0
-    if (edit.renderedMarkdownDoc === null && emptyBootstrapDoc) {
+    if (edit.renderedMarkdownDoc === null && isEmptyBootstrapDoc(doc)) {
       const inserted = replaceRangeWithFragment(this.session, this.origin, 0, doc.content.size, parsedDoc.content)
       edit.renderedMarkdownDoc = parsedDoc
       const { meta: nextMeta } = this.getMapping()
@@ -1070,6 +1074,43 @@ export class DocumentToolRuntime {
     }
   }
 
+  private insertPlainTextChunk(
+    edit: ActiveStreamingEdit,
+    text: string,
+  ): { endPos: number; nextInsertAnchorBytes: Uint8Array } | null {
+    const { doc, meta } = this.getMapping()
+    const mapping = meta.mapping as ProsemirrorMapping
+    const pos = resolveAnchor(this.session, mapping, edit.insertAnchorBytes)
+    if (pos === null) return null
+
+    if (edit.committedChars === 0 && edit.mode !== 'rewrite' && isEmptyBootstrapDoc(doc)) {
+      const paragraph = schema.nodes.paragraph.create(
+        null,
+        text.length > 0 ? schema.text(text) : undefined,
+      )
+      const inserted = replaceRangeWithFragment(
+        this.session,
+        this.origin,
+        0,
+        doc.content.size,
+        PMFragment.from(paragraph),
+      )
+      const { meta: nextMeta } = this.getMapping()
+      const nextMapping = nextMeta.mapping as ProsemirrorMapping
+      return {
+        endPos: inserted.tailTextPos,
+        nextInsertAnchorBytes: encodeAnchorAt(this.session, inserted.tailTextPos, nextMapping),
+      }
+    }
+
+    const endPos = insertAt(this.session, this.origin, text, pos)
+    const { meta: nextMeta } = this.getMapping()
+    return {
+      endPos,
+      nextInsertAnchorBytes: encodeAnchorAt(this.session, endPos, nextMeta.mapping as ProsemirrorMapping),
+    }
+  }
+
   async pushStreamingText(delta: string): Promise<void> {
     this.throwIfAborted()
     const edit = this.activeEdit
@@ -1101,15 +1142,11 @@ export class DocumentToolRuntime {
     if (stable.length === 0) return
 
     this.session.setStatus('composing')
-    const { meta } = this.getMapping()
-    const mapping = meta.mapping as ProsemirrorMapping
-    const pos = resolveAnchor(this.session, mapping, edit.insertAnchorBytes)
-    if (pos === null) return
-    const endPos = insertAt(this.session, this.origin, stable, pos)
+    const inserted = this.insertPlainTextChunk(edit, stable)
+    if (!inserted) return
     edit.committedChars += stable.length
-    const { meta: mapMeta2 } = this.getMapping()
-    edit.insertAnchorBytes = encodeAnchorAt(this.session, endPos, mapMeta2.mapping as ProsemirrorMapping)
-    this.updateCursor(endPos)
+    edit.insertAnchorBytes = inserted.nextInsertAnchorBytes
+    this.updateCursor(inserted.endPos)
   }
 
   stopStreamingEdit(cancelled: boolean = false): { ok: true; committedChars: number; cancelled?: boolean } {
@@ -1130,15 +1167,11 @@ export class DocumentToolRuntime {
         this.updateCursor(inserted.endPos)
       }
     } else if (!cancelled && edit.buffer.length > 0) {
-      const { meta } = this.getMapping()
-      const mapping = meta.mapping as ProsemirrorMapping
-      const pos = resolveAnchor(this.session, mapping, edit.insertAnchorBytes)
-      if (pos !== null) {
-        const endPos = insertAt(this.session, this.origin, edit.buffer, pos)
+      const inserted = this.insertPlainTextChunk(edit, edit.buffer)
+      if (inserted) {
         edit.committedChars += edit.buffer.length
-        const { meta: mapMeta2 } = this.getMapping()
-        edit.insertAnchorBytes = encodeAnchorAt(this.session, endPos, mapMeta2.mapping as ProsemirrorMapping)
-        this.updateCursor(endPos)
+        edit.insertAnchorBytes = inserted.nextInsertAnchorBytes
+        this.updateCursor(inserted.endPos)
       }
     }
 

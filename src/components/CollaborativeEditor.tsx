@@ -16,6 +16,8 @@ import { setChatTargetOverlay } from '../lib/editor/chatTargetOverlay'
 import { schema } from '../lib/editor/schema'
 import { createRoomProvider } from '../lib/yjs/createRoomProvider'
 import {
+  decodeAnchor,
+  decodeAnchorBase64,
   encodeAnchorBase64,
   type ProsemirrorMapping,
 } from '../lib/agent/relativeAnchors'
@@ -186,6 +188,34 @@ function SelectionContextWatcher(props: {
   return null
 }
 
+function restoreSelectionFromEditorContext(
+  view: EditorView,
+  fragment: import('yjs').XmlFragment,
+  editorContext: EditorContextPayload | null | undefined,
+): void {
+  if (!editorContext || !fragment.doc) return
+  const { meta } = initProseMirrorDoc(fragment, schema)
+  const mapping = meta.mapping as ProsemirrorMapping
+  const anchor = decodeAnchor(fragment.doc, fragment, mapping, decodeAnchorBase64(editorContext.anchor))
+  if (anchor === null) return
+
+  const selection =
+    editorContext.kind === 'selection'
+      ? (() => {
+          const head = decodeAnchor(fragment.doc, fragment, mapping, decodeAnchorBase64(editorContext.head))
+          if (head === null) return null
+          return TextSelection.create(view.state.doc, Math.min(anchor, head), Math.max(anchor, head))
+        })()
+      : TextSelection.create(view.state.doc, anchor)
+
+  if (!selection) return
+  const current = view.state.selection
+  if (current.from === selection.from && current.to === selection.to) return
+  const tr = view.state.tr.setSelection(selection)
+  tr.setMeta('addToHistory', false)
+  view.dispatch(tr)
+}
+
 function isDocumentEffectivelyEmpty(fragment: import('yjs').XmlFragment): boolean {
   const { doc } = initProseMirrorDoc(fragment, schema)
   return doc.textBetween(0, doc.content.size, '\n\n', '\n').trim().length === 0
@@ -210,7 +240,7 @@ export function CollaborativeEditor(props: {
   onEditorContextChange?: (context: EditorContextPayload | null) => void
   showChatTargetOverlay?: boolean
   chatTargetContext?: EditorContextPayload | null
-  holdChatTarget?: boolean
+  freezeEditorContext?: boolean
 }) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -232,7 +262,7 @@ function CollaborativeEditorInner({
   onEditorContextChange,
   showChatTargetOverlay,
   chatTargetContext,
-  holdChatTarget,
+  freezeEditorContext,
 }: {
   docKey: string
   localUserName: string
@@ -243,11 +273,17 @@ function CollaborativeEditorInner({
   onEditorContextChange?: (context: EditorContextPayload | null) => void
   showChatTargetOverlay?: boolean
   chatTargetContext?: EditorContextPayload | null
-  holdChatTarget?: boolean
+  freezeEditorContext?: boolean
 }) {
   const [room, setRoom] = useState<ReturnType<typeof createRoomProvider> | null>(null)
+  const [editorView, setEditorView] = useState<EditorView | null>(null)
+  const [selectionTrackingEnabled, setSelectionTrackingEnabled] = useState(
+    freezeEditorContext !== true,
+  )
   const viewRef = useRef<EditorView | null>(null)
   const targetContextRef = useRef<EditorContextPayload | null>(chatTargetContext ?? null)
+  const prevFreezeRef = useRef<boolean>(Boolean(freezeEditorContext))
+  const pendingSelectionRestoreRef = useRef(false)
   const pendingBootstrapCursorRef = useRef(false)
 
   useEffect(() => {
@@ -284,17 +320,33 @@ function CollaborativeEditorInner({
   }, [room, onEditorContextChange])
 
   useEffect(() => {
-    if (holdChatTarget) {
+    if (freezeEditorContext) {
+      pendingSelectionRestoreRef.current = true
       pendingBootstrapCursorRef.current =
         chatTargetContext?.kind === 'cursor' && !!room && isDocumentEffectivelyEmpty(room.fragment)
+      setSelectionTrackingEnabled(false)
+      prevFreezeRef.current = true
       return
     }
 
     pendingBootstrapCursorRef.current = false
-  }, [chatTargetContext, holdChatTarget, room])
+
+    if (!room || !editorView) {
+      setSelectionTrackingEnabled(true)
+      prevFreezeRef.current = Boolean(freezeEditorContext)
+      return
+    }
+    const wasFrozen = prevFreezeRef.current
+    prevFreezeRef.current = false
+    if (wasFrozen) {
+      setSelectionTrackingEnabled(false)
+      return
+    }
+    setSelectionTrackingEnabled(true)
+  }, [chatTargetContext, freezeEditorContext, room])
 
   useEffect(() => {
-    if (!room || !holdChatTarget || !pendingBootstrapCursorRef.current || !onEditorContextChange) {
+    if (!room || !freezeEditorContext || !pendingBootstrapCursorRef.current || !onEditorContextChange) {
       return
     }
 
@@ -305,13 +357,42 @@ function CollaborativeEditorInner({
       const nextContext = buildStartCursorContext(room.fragment)
       targetContextRef.current = nextContext
       onEditorContextChange(nextContext)
+      pendingSelectionRestoreRef.current = false
+      window.setTimeout(() => {
+        if (viewRef.current) {
+          restoreSelectionFromEditorContext(viewRef.current, room.fragment, nextContext)
+        }
+      }, 0)
     }
 
     room.ydoc.on('afterTransaction', handleAfterTransaction)
     return () => {
       room.ydoc.off('afterTransaction', handleAfterTransaction)
     }
-  }, [holdChatTarget, onEditorContextChange, room])
+  }, [freezeEditorContext, onEditorContextChange, room])
+
+  useEffect(() => {
+    if (!room || !editorView) return
+
+    const handleFocus = () => {
+      if (pendingSelectionRestoreRef.current) {
+        pendingSelectionRestoreRef.current = false
+        window.setTimeout(() => {
+          restoreSelectionFromEditorContext(editorView, room.fragment, targetContextRef.current)
+          setSelectionTrackingEnabled(true)
+        }, 0)
+        return
+      }
+      if (!freezeEditorContext) {
+        setSelectionTrackingEnabled(true)
+      }
+    }
+
+    editorView.dom.addEventListener('focus', handleFocus)
+    return () => {
+      editorView.dom.removeEventListener('focus', handleFocus)
+    }
+  }, [chatTargetContext, editorView, freezeEditorContext, room])
 
   useEffect(() => {
     if (!room || !onConnectionStateChange) return
@@ -435,6 +516,7 @@ function CollaborativeEditorInner({
         <EditorViewBridge
           onViewChange={(view) => {
             viewRef.current = view
+            setEditorView(view)
           }}
         />
         <ChatTargetOverlaySync
@@ -445,7 +527,7 @@ function CollaborativeEditorInner({
         {onEditorContextChange && (
           <SelectionContextWatcher
             fragment={room.fragment}
-            enabled={true}
+            enabled={selectionTrackingEnabled}
             onChange={onEditorContextChange}
           />
         )}

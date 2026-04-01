@@ -447,6 +447,7 @@ textarea {
   flex-direction: column;
   gap: 0;
   padding: 2.75rem 2.5rem 2rem;
+  margin: 0 auto;
   max-width: 780px;
 }
 

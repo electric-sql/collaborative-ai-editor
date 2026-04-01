@@ -191,6 +191,28 @@ describe('DocumentToolRuntime unit tests', () => {
     runtime.destroy()
   })
 
+  it('bootstraps the first plain-text streaming chunk into an empty document without dropping spaces', async () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+
+    runtime.placeCursorAtDocumentBoundary('start')
+    runtime.startStreamingEdit('insert')
+
+    await runtime.pushStreamingText('Mira')
+    expect(readDocText(session)).toBe('')
+
+    await runtime.pushStreamingText(' found')
+    expect(readDocText(session)).toBe('Mira ')
+
+    await runtime.pushStreamingText(' a key.')
+    expect(readDocText(session)).toBe('Mira found a key.')
+
+    runtime.stopStreamingEdit(false)
+    expect(readDocText(session)).toBe('Mira found a key.')
+
+    runtime.destroy()
+  })
+
   it('streams rewrite-mode text into the selected range', async () => {
     const session = createTestSession()
     const runtime = DocumentToolRuntime.createForSession({ session })
