@@ -236,6 +236,14 @@ export function parseMarkdownDocument(markdown: string): PMNode {
   return streamStateToProsemirrorDoc(state)
 }
 
+export function parseInlineMarkdownFragment(markdown: string): Fragment {
+  const doc = parseMarkdownDocument(markdown)
+  if (doc.childCount !== 1 || doc.firstChild?.type !== schema.nodes.paragraph) {
+    throw new Error('Inline markdown replacement must produce exactly one paragraph')
+  }
+  return doc.firstChild.content
+}
+
 export function isEffectivelyEmptyMarkdownDoc(doc: PMNode): boolean {
   return (
     doc.childCount === 0 ||

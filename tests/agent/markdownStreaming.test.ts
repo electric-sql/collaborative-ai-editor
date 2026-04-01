@@ -138,4 +138,5 @@ describe('markdown streaming unit tests', () => {
 
     runtime.destroy()
   })
+
 })

@@ -27,10 +27,11 @@ const searchTextDef = toolDefinition({
 const replaceMatchesDef = toolDefinition({
   name: 'replace_matches',
   description:
-    'Replace multiple previously found exact matches in one step. Use this after search_text when the user wants the same exact text changed in several places, such as renaming a character throughout the document.',
+    'Replace multiple previously found exact matches in one step. Use this after search_text when the user wants the same exact text changed in several places, such as renaming a character throughout the document. Set contentFormat to markdown when the replacement string uses inline markdown like **bold**, *italic*, or `code` and should become formatting instead of literal punctuation.',
   inputSchema: z.object({
     matchIds: z.array(z.string().min(1)).min(1).max(50),
     text: z.string(),
+    contentFormat: z.enum(['plain_text', 'markdown']).optional(),
   }),
 })
 
@@ -51,6 +52,12 @@ const placeCursorAtDocumentBoundaryDef = toolDefinition({
   inputSchema: z.object({
     boundary: z.enum(['start', 'end']),
   }),
+})
+
+const insertParagraphBreakDef = toolDefinition({
+  name: 'insert_paragraph_break',
+  description:
+    'Create a new empty paragraph block at the current cursor position and move the cursor into it. Use this when the user asks for a second paragraph, a new paragraph, or a closing paragraph as a distinct block.',
 })
 
 const selectTextDef = toolDefinition({
@@ -99,9 +106,10 @@ const setFormatDef = toolDefinition({
 const insertTextDef = toolDefinition({
   name: 'insert_text',
   description:
-    'Insert literal text at the current cursor. If a selection exists, it will be replaced. Use this for exact short strings that should appear in the document, not for status messages or commentary. When the user gives an exact string, insert it verbatim without adding extra spaces or punctuation unless they are part of the provided text.',
+    'Insert text at the current cursor. If a selection exists, it will be replaced. Use plain_text for exact literal strings that should appear verbatim in the document. Set contentFormat to markdown when short inline markdown like **bold**, *italic*, or `code` should become real formatting instead of literal punctuation.',
   inputSchema: z.object({
     text: z.string(),
+    contentFormat: z.enum(['plain_text', 'markdown']).optional(),
   }),
 })
 
@@ -135,8 +143,12 @@ export function createDocumentTools(runtime: DocumentToolRuntime) {
       ok: true,
       matches: runtime.searchText(query, maxResults),
     })),
-    replaceMatchesDef.server(async ({ matchIds, text }, context) => {
-      const result = runtime.replaceMatches(matchIds, text)
+    replaceMatchesDef.server(async ({ matchIds, text, contentFormat }, context) => {
+      const result = runtime.replaceMatches(
+        matchIds,
+        text,
+        (contentFormat as 'plain_text' | 'markdown' | undefined) ?? 'plain_text',
+      )
       context?.emitCustomEvent('agent-edit-applied', {
         kind: 'replace_matches',
         count: result.replacedCount,
@@ -152,6 +164,11 @@ export function createDocumentTools(runtime: DocumentToolRuntime) {
     placeCursorAtDocumentBoundaryDef.server(async ({ boundary }, context) => {
       const result = runtime.placeCursorAtDocumentBoundary(boundary)
       context?.emitCustomEvent('agent-cursor-updated', { boundary })
+      return result
+    }),
+    insertParagraphBreakDef.server(async (_input, context) => {
+      const result = runtime.insertParagraphBreak()
+      context?.emitCustomEvent('agent-edit-applied', { kind: 'insert_paragraph_break' })
       return result
     }),
     selectTextDef.server(async ({ matchId }, context) => {
@@ -197,8 +214,11 @@ export function createDocumentTools(runtime: DocumentToolRuntime) {
       })
       return result
     }),
-    insertTextDef.server(async ({ text }, context) => {
-      const result = runtime.insertText(text)
+    insertTextDef.server(async ({ text, contentFormat }, context) => {
+      const result = runtime.insertText(
+        text,
+        (contentFormat as 'plain_text' | 'markdown' | undefined) ?? 'plain_text',
+      )
       context?.emitCustomEvent('agent-edit-applied', { kind: 'insert_text', chars: text.length })
       return result
     }),

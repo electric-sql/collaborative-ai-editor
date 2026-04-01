@@ -51,6 +51,21 @@ describe('DocumentToolRuntime unit tests', () => {
     runtime.destroy()
   })
 
+  it('inserts a paragraph break at the current cursor', () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+
+    runtime.insertText('First paragraph.')
+    runtime.placeCursorAtDocumentBoundary('end')
+    const result = runtime.insertParagraphBreak()
+    runtime.insertText('Second paragraph.')
+
+    expect(result).toEqual({ ok: true })
+    expect(readDocText(session)).toBe('First paragraph.\n\nSecond paragraph.')
+
+    runtime.destroy()
+  })
+
   it('replaces multiple exact matches in one operation', () => {
     const session = createTestSession()
     const runtime = DocumentToolRuntime.createForSession({ session })
@@ -64,6 +79,32 @@ describe('DocumentToolRuntime unit tests', () => {
 
     expect(result).toEqual({ ok: true, replacedCount: 2, insertedChars: 4 })
     expect(readDocText(session)).toBe('Kiki waved. Kiki smiled.')
+
+    runtime.destroy()
+  })
+
+  it('replaces a matched word with markdown inline formatting', () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+
+    runtime.insertText('alpha beta gamma')
+    const [match] = runtime.searchText('beta')
+    const result = runtime.replaceMatches([match!.matchId], '**beta**', 'markdown')
+
+    expect(result).toEqual({ ok: true, replacedCount: 1, insertedChars: 8 })
+    expect(readDocJson(session)).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'alpha ' },
+            { type: 'text', text: 'beta', marks: [{ type: 'strong' }] },
+            { type: 'text', text: ' gamma' },
+          ],
+        },
+      ],
+    })
 
     runtime.destroy()
   })
@@ -187,6 +228,32 @@ describe('DocumentToolRuntime unit tests', () => {
           content: [
             { type: 'text', text: 'alpha ' },
             { type: 'text', text: 'beta', marks: [{ type: 'strong' }] },
+          ],
+        },
+      ],
+    })
+
+    runtime.destroy()
+  })
+
+  it('replaces the current selection with markdown inline formatting', () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+
+    runtime.insertText('alpha beta gamma')
+    const [match] = runtime.searchText('beta')
+    runtime.selectText(match!.matchId)
+    runtime.insertText('**beta**', 'markdown')
+
+    expect(readDocJson(session)).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'alpha ' },
+            { type: 'text', text: 'beta', marks: [{ type: 'strong' }] },
+            { type: 'text', text: ' gamma' },
           ],
         },
       ],

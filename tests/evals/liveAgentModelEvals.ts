@@ -638,6 +638,32 @@ const scenarios: Scenario[] = [
     }),
   },
   {
+    name: 'add second paragraph after titled story',
+    preferredMode: 'continue',
+    seed:
+      'The Tent Light\n\nAt dawn, Mira found a tiny door in the oak tree behind her house. She opened it with a thimble and stepped into a tent full of hummingbirds, all asleep on threads of light.',
+    prompt: 'Add a second paragraph to the story. Put it in the document.',
+    validate: chainValidators(validateNoSummaryLeakInDocument, (result) => {
+      const json = result.docJson as
+        | {
+            content?: Array<{ type?: string }>
+          }
+        | undefined
+      const paragraphCount =
+        json?.content?.filter((node) => node.type === 'paragraph').length ?? 0
+      if (paragraphCount < 2) {
+        return 'Expected the document to end with a distinct second paragraph, not appended text in the first paragraph.'
+      }
+      if (!result.toolCalls.includes('insert_paragraph_break')) {
+        return 'Expected insert_paragraph_break to be used before writing the second paragraph.'
+      }
+      if (!result.docText.includes('\n\n')) {
+        return 'Expected paragraph separation in the final document text.'
+      }
+      return null
+    }),
+  },
+  {
     name: 'insert parenthetical before final sentence',
     preferredMode: 'insert',
     seed: 'First statement. Final sentence.',

@@ -1,6 +1,6 @@
 import { Fragment as PMFragment, type Node as PMNode } from 'prosemirror-model'
 import { EditorState, TextSelection } from 'prosemirror-state'
-import { setBlockType } from 'prosemirror-commands'
+import { setBlockType, splitBlock } from 'prosemirror-commands'
 import { wrapInList, liftListItem } from 'prosemirror-schema-list'
 import type { YjsProvider } from '@durable-streams/y-durable-streams'
 import * as Y from 'yjs'
@@ -18,6 +18,7 @@ import {
   diffMarkdownDocsForAppend,
   endStreamingMarkdown,
   isEffectivelyEmptyMarkdownDoc,
+  parseInlineMarkdownFragment,
   streamStateToProsemirrorDoc,
   writeStreamingMarkdown,
   type StreamingMarkdownState,
@@ -273,6 +274,7 @@ export type FormatAction = 'add' | 'remove' | 'toggle' | 'set'
 export type ContentFormat = 'plain_text' | 'markdown'
 export type CompletedDocumentMutation =
   | { kind: 'insert_text'; insertedChars: number }
+  | { kind: 'insert_paragraph_break' }
   | { kind: 'replace_matches'; replacedCount: number; insertedChars: number }
   | { kind: 'delete_selection' }
   | { kind: 'set_format'; formatKind: FormatKind; format: FormatName; action: FormatAction | 'set' }
@@ -567,6 +569,47 @@ export class DocumentToolRuntime {
     return { ok: true }
   }
 
+  insertParagraphBreak(): { ok: true } {
+    this.throwIfAborted()
+    this.ensureCursorAtEnd()
+    const { doc, meta } = this.getMapping()
+    const mapping = meta.mapping as ProsemirrorMapping
+    const cursorPos = resolveAnchor(this.session, mapping, this.cursorAnchorBytes)
+    if (cursorPos === null) {
+      throw new Error('Could not resolve cursor position')
+    }
+
+    const state = EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, cursorPos),
+    })
+    let nextDoc: PMNode | null = null
+    let nextPos: number | null = null
+    let didChange = false
+    const dispatch = (tr: EditorState['tr']) => {
+      tr.setMeta('addToHistory', false)
+      didChange = tr.docChanged
+      nextDoc = tr.doc
+      nextPos = tr.selection.to
+    }
+
+    splitBlock(state, dispatch)
+
+    if (!didChange || !nextDoc || nextPos === null) {
+      return { ok: true }
+    }
+
+    applyPmRootToY(this.session, nextDoc, meta, this.origin)
+    this.clearSelectionInternal()
+    this.completedMutations.push({ kind: 'insert_paragraph_break' })
+    const { meta: nextMeta } = this.getMapping()
+    const nextMapping = nextMeta.mapping as ProsemirrorMapping
+    this.cursorAnchorBytes = encodeAnchorAt(this.session, nextPos, nextMapping)
+    this.session.setCursorFromAbsolute(nextPos, nextMapping)
+    return { ok: true }
+  }
+
   setFormat(input: {
     kind: FormatKind
     format: FormatName
@@ -678,12 +721,26 @@ export class DocumentToolRuntime {
     return { ok: true, kind: input.kind, format: input.format, action }
   }
 
-  insertText(text: string): { ok: true; insertedChars: number } {
+  insertText(
+    text: string,
+    contentFormat: ContentFormat = 'plain_text',
+  ): { ok: true; insertedChars: number } {
     this.throwIfAborted()
     const selection = this.resolveSelection()
     let endPos: number
+    const markdownFragment =
+      contentFormat === 'markdown' ? parseInlineMarkdownFragment(text) : null
     if (selection) {
-      endPos = replaceRange(this.session, this.origin, selection.from, selection.to, text)
+      endPos =
+        markdownFragment !== null
+          ? replaceRangeWithFragment(
+              this.session,
+              this.origin,
+              selection.from,
+              selection.to,
+              markdownFragment,
+            ).endPos
+          : replaceRange(this.session, this.origin, selection.from, selection.to, text)
       this.clearSelectionInternal()
     } else {
       this.ensureCursorAtEnd()
@@ -693,7 +750,10 @@ export class DocumentToolRuntime {
       if (pos === null) {
         throw new Error('Could not resolve cursor position')
       }
-      endPos = insertAt(this.session, this.origin, text, pos)
+      endPos =
+        markdownFragment !== null
+          ? replaceRangeWithFragment(this.session, this.origin, pos, pos, markdownFragment).endPos
+          : insertAt(this.session, this.origin, text, pos)
     }
     this.updateCursor(endPos)
     if (text.length > 0) {
@@ -705,12 +765,15 @@ export class DocumentToolRuntime {
   replaceMatches(
     matchIds: string[],
     text: string,
+    contentFormat: ContentFormat = 'plain_text',
   ): { ok: true; replacedCount: number; insertedChars: number } {
     this.throwIfAborted()
     const uniqueMatchIds = Array.from(new Set(matchIds))
     if (uniqueMatchIds.length === 0) {
       return { ok: true, replacedCount: 0, insertedChars: text.length }
     }
+    const markdownFragment =
+      contentFormat === 'markdown' ? parseInlineMarkdownFragment(text) : null
 
     const { meta } = this.getMapping()
     const mapping = meta.mapping as ProsemirrorMapping
@@ -737,7 +800,16 @@ export class DocumentToolRuntime {
 
     let cursorPos = ranges[ranges.length - 1]!.from
     for (const range of ranges) {
-      cursorPos = replaceRange(this.session, this.origin, range.from, range.to, text)
+      cursorPos =
+        markdownFragment !== null
+          ? replaceRangeWithFragment(
+              this.session,
+              this.origin,
+              range.from,
+              range.to,
+              markdownFragment,
+            ).endPos
+          : replaceRange(this.session, this.origin, range.from, range.to, text)
     }
 
     this.clearSelectionInternal()

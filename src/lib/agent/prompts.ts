@@ -24,10 +24,15 @@ export function buildChatToolSystemPrompt(preferredMode?: AgentRunMode): string 
     'Use search_text before place_cursor or select_text when the target location is not already obvious from prior tool results.',
     'When the user asks to change the same exact name or phrase in multiple places, use search_text to gather all exact matches and prefer replace_matches over editing occurrences one by one.',
     'Use select_current_block when the user asks to format or rewrite the current line, current paragraph, or current block and the cursor is already in the right place.',
+    'For formatting existing words or phrases, prefer selecting the exact text and using set_format.',
+    'If you instead replace a matched word or a selected span using markdown markers like **bold**, *italic*, or `code`, you must set contentFormat to markdown on replace_matches or insert_text so the markers become formatting rather than literal characters.',
+    'If the user explicitly wants literal asterisks, underscores, or backticks inserted as text, keep contentFormat as plain_text.',
     'For requests to add content at the very top or very end of the document, use place_cursor_at_document_boundary rather than guessing with search results.',
+    'When the user asks for a new paragraph, second paragraph, closing paragraph, or another distinct paragraph block, place the cursor at the target location, call insert_paragraph_break, then stream the new paragraph text into that new block.',
     'When the user asks for a title for the whole document, place the cursor at the very top first. Prefer a markdown heading when the title should be styled as a heading.',
     'For open-ended writing requests like "write me a short story", "draft an intro", or "continue this scene", start streaming edit mode and put the generated prose into the document.',
     'For requests to add or continue prose at the end of the document, prefer continue mode and write the prose into the document rather than narrating what you did.',
+    'After insert_paragraph_break, prefer insert mode for the new prose so it stays anchored in that new paragraph. Use markdown only if the new block itself needs heading, list, or inline formatting.',
     'For exact deletions or exact replacements of a matched phrase or sentence, prefer selecting the smallest exact span and then using delete_selection, insert_text, or rewrite mode on that span. Avoid broad select_between_matches unless the user explicitly asks for a range between two anchors.',
     'Prefer insert_text for short exact literal strings the user provided verbatim. Prefer start_streaming_edit for generated prose.',
     'When the user gives exact text to insert, preserve it exactly and do not add extra spaces, line breaks, punctuation, or explanatory words unless the user explicitly asked for them.',
@@ -89,6 +94,8 @@ export function buildPostEditSummaryPrompt(input: {
     switch (mutation.kind) {
       case 'insert_text':
         return `- inserted literal text (${mutation.insertedChars} chars)`
+      case 'insert_paragraph_break':
+        return '- inserted a paragraph break'
       case 'replace_matches':
         return `- replaced ${mutation.replacedCount} exact match${mutation.replacedCount === 1 ? '' : 'es'} with text (${mutation.insertedChars} chars each)`
       case 'delete_selection':

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DocumentToolRuntime } from '../../src/lib/agent/documentToolRuntime'
 import { createDocumentTools } from '../../src/lib/agent/documentTools'
-import { createEventCollector, createTestSession, readDocText } from './testUtils'
+import { createEventCollector, createTestSession, readDocJson, readDocText } from './testUtils'
 
 function createToolMap(runtime: DocumentToolRuntime) {
   return new Map(createDocumentTools(runtime).map((tool) => [tool.name, tool]))
@@ -18,6 +18,7 @@ describe('document tool unit tests', () => {
       'replace_matches',
       'place_cursor',
       'place_cursor_at_document_boundary',
+      'insert_paragraph_break',
       'select_text',
       'select_current_block',
       'select_between_matches',
@@ -112,6 +113,27 @@ describe('document tool unit tests', () => {
     runtime.destroy()
   })
 
+  it('runs the paragraph break tool and emits an edit event', async () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+    const tools = createToolMap(runtime)
+    const { context, events } = createEventCollector()
+
+    await tools.get('insert_text')!.execute?.({ text: 'First paragraph.' }, context)
+    await tools.get('place_cursor_at_document_boundary')!.execute?.({ boundary: 'end' }, context)
+    await tools.get('insert_paragraph_break')!.execute?.({}, context)
+    await tools.get('insert_text')!.execute?.({ text: 'Second paragraph.' }, context)
+
+    expect(readDocText(session)).toBe('First paragraph.\n\nSecond paragraph.')
+    expect(events.filter((event) => event.name === 'agent-edit-applied')).toEqual([
+      { name: 'agent-edit-applied', value: { kind: 'insert_text', chars: 16 } },
+      { name: 'agent-edit-applied', value: { kind: 'insert_paragraph_break' } },
+      { name: 'agent-edit-applied', value: { kind: 'insert_text', chars: 17 } },
+    ])
+
+    runtime.destroy()
+  })
+
   it('runs the current block selection tool', async () => {
     const session = createTestSession()
     const runtime = DocumentToolRuntime.createForSession({ session })
@@ -175,6 +197,40 @@ describe('document tool unit tests', () => {
     runtime.destroy()
   })
 
+  it('runs replace_matches with markdown inline formatting', async () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+    const tools = createToolMap(runtime)
+
+    await tools.get('insert_text')!.execute?.({ text: 'alpha beta gamma' })
+    const search = (await tools.get('search_text')!.execute?.({ query: 'beta', maxResults: 1 })) as {
+      ok: true
+      matches: Array<{ matchId: string }>
+    }
+    const result = await tools.get('replace_matches')!.execute?.({
+      matchIds: [search.matches[0]!.matchId],
+      text: '**beta**',
+      contentFormat: 'markdown',
+    })
+
+    expect(result).toEqual({ ok: true, replacedCount: 1, insertedChars: 8 })
+    expect(readDocJson(session)).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'alpha ' },
+            { type: 'text', text: 'beta', marks: [{ type: 'strong' }] },
+            { type: 'text', text: ' gamma' },
+          ],
+        },
+      ],
+    })
+
+    runtime.destroy()
+  })
+
   it('runs the format tool and emits a formatting event', async () => {
     const session = createTestSession()
     const runtime = DocumentToolRuntime.createForSession({ session })
@@ -195,6 +251,36 @@ describe('document tool unit tests', () => {
     expect(events.find((event) => event.name === 'agent-format-applied')).toEqual({
       name: 'agent-format-applied',
       value: { kind: 'mark', format: 'bold', action: 'add' },
+    })
+
+    runtime.destroy()
+  })
+
+  it('runs insert_text with markdown inline formatting over a selection', async () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+    const tools = createToolMap(runtime)
+
+    await tools.get('insert_text')!.execute?.({ text: 'alpha beta gamma' })
+    const matches = (await tools.get('search_text')!.execute?.({ query: 'beta', maxResults: 1 })) as {
+      ok: true
+      matches: Array<{ matchId: string }>
+    }
+    await tools.get('select_text')!.execute?.({ matchId: matches.matches[0]!.matchId })
+    await tools.get('insert_text')!.execute?.({ text: '**beta**', contentFormat: 'markdown' })
+
+    expect(readDocJson(session)).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'alpha ' },
+            { type: 'text', text: 'beta', marks: [{ type: 'strong' }] },
+            { type: 'text', text: ' gamma' },
+          ],
+        },
+      ],
     })
 
     runtime.destroy()
