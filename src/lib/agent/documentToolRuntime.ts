@@ -848,8 +848,10 @@ export class DocumentToolRuntime {
     if (appendedBlocks.length > 0) {
       const latestDoc = changed ? this.getMapping().doc : doc
       const blockPos =
-        insertionPosAtEndOfNode(latestDoc, diff.appendedBlocks?.path ?? []) ??
-        resolveBlockInsertPos(latestDoc, currentPos)
+        edit.renderedMarkdownDoc === null
+          ? resolveBlockInsertPos(latestDoc, currentPos)
+          : insertionPosAtEndOfNode(latestDoc, diff.appendedBlocks?.path ?? []) ??
+            resolveBlockInsertPos(latestDoc, currentPos)
       const inserted = replaceRangeWithFragment(
         this.session,
         this.origin,

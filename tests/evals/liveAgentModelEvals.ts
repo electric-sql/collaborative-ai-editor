@@ -518,6 +518,31 @@ const scenarios: Scenario[] = [
     }),
   },
   {
+    name: 'title existing story at top with heading',
+    preferredMode: 'insert',
+    seed:
+      'At dawn, Mira found a key in the garden with no lock to fit it. She carried it all day until, at sunset, the sky cracked open like a door.',
+    prompt:
+      'Give it a short title at the very top of the document. Format only the title as a markdown heading and keep the story body below it.',
+    validate: chainValidators(validateNoSummaryLeakInDocument, (result) => {
+      const json = result.docJson as { content?: Array<{ type?: string; attrs?: { level?: number } }> } | undefined
+      if (json?.content?.[0]?.type !== 'heading') {
+        return 'Expected the document to begin with a heading title.'
+      }
+      if ((json.content?.[0]?.attrs?.level ?? 0) < 1) {
+        return 'Expected the title heading to have a valid heading level.'
+      }
+      if (
+        !result.docText.includes(
+          'At dawn, Mira found a key in the garden with no lock to fit it.',
+        )
+      ) {
+        return 'Expected the original story body to remain intact below the title.'
+      }
+      return null
+    }),
+  },
+  {
     name: 'replace second beta only',
     preferredMode: 'rewrite',
     seed: 'beta one beta two',

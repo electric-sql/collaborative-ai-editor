@@ -109,4 +109,33 @@ describe('markdown streaming unit tests', () => {
     expect(readDocText(session)).toBe('Make this stronger.')
     runtime.destroy()
   })
+
+  it('inserts a streamed markdown title at the top of a non-empty document', async () => {
+    const session = createTestSession()
+    const runtime = DocumentToolRuntime.createForSession({ session })
+
+    runtime.insertText('At dawn, Mira found a key in the garden.')
+    runtime.placeCursorAtDocumentBoundary('start')
+    runtime.startStreamingEdit('insert', 'markdown')
+    await runtime.pushStreamingText('# Key')
+    await runtime.pushStreamingText(' to Evening\n\n')
+    runtime.stopStreamingEdit(false)
+
+    expect(readDocJson(session)).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 1 },
+          content: [{ type: 'text', text: 'Key to Evening' }],
+        },
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'At dawn, Mira found a key in the garden.' }],
+        },
+      ],
+    })
+
+    runtime.destroy()
+  })
 })

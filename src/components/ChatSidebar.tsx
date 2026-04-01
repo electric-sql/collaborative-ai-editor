@@ -516,7 +516,6 @@ export function ChatSidebar(props: {
               handleSend()
             }
           }}
-          disabled={busy}
         />
         <Button
           className="chat-send-inline"

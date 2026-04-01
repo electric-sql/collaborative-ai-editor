@@ -24,6 +24,7 @@ export function buildChatToolSystemPrompt(preferredMode?: AgentRunMode): string 
     'Use search_text before place_cursor or select_text when the target location is not already obvious from prior tool results.',
     'Use select_current_block when the user asks to format or rewrite the current line, current paragraph, or current block and the cursor is already in the right place.',
     'For requests to add content at the very top or very end of the document, use place_cursor_at_document_boundary rather than guessing with search results.',
+    'When the user asks for a title for the whole document, place the cursor at the very top first. Prefer a markdown heading when the title should be styled as a heading.',
     'For open-ended writing requests like "write me a short story", "draft an intro", or "continue this scene", start streaming edit mode and put the generated prose into the document.',
     'For requests to add or continue prose at the end of the document, prefer continue mode and write the prose into the document rather than narrating what you did.',
     'For exact deletions or exact replacements of a matched phrase or sentence, prefer selecting the smallest exact span and then using delete_selection, insert_text, or rewrite mode on that span. Avoid broad select_between_matches unless the user explicitly asks for a range between two anchors.',
